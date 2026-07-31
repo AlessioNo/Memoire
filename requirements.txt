@@ -1,0 +1,18 @@
+# Python 3.13 recommended (see notebook kernel metadata)
+
+numpy>=1.26
+pandas>=2.2
+scipy>=1.13
+scikit-learn>=1.4
+lightgbm>=4.3
+statsmodels>=0.14
+matplotlib>=3.8
+shap>=0.45
+joblib>=1.4
+
+# pipeline orchestration (notebook 00)
+papermill>=2.6
+
+# jupyter (to open/run the notebooks at all)
+jupyter>=1.0
+ipykernel>=6.29

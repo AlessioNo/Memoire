@@ -1,0 +1,41 @@
+# --- Data (raw, intermediate, processed) : never committed, too large / not yours to redistribute ---
+data/raw/
+data/interim/
+data/processed/
+# keep the folder structure itself so `config.assurer_dossiers()` / a fresh clone has somewhere to land files
+!data/raw/.gitkeep
+!data/interim/.gitkeep
+!data/processed/.gitkeep
+
+# --- Generated outputs / trained models ---
+outputs/
+modeles/
+!outputs/.gitkeep
+!modeles/.gitkeep
+
+# --- Jupyter ---
+.ipynb_checkpoints/
+*/.ipynb_checkpoints/*
+
+# --- Python ---
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+.eggs/
+build/
+dist/
+
+# --- Virtual environments ---
+.venv/
+venv/
+env/
+
+# --- Editor / OS cruft ---
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# --- Logs / misc ---
+*.log
