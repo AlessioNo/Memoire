@@ -1,4 +1,4 @@
-# gkx_project — pipeline de prédiction de rendements (Gu, Kelly & Xiu, 2020)
+# Mémoire Alessio Nocera
 
 ## Structure du projet
 
