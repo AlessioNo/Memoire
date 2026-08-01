@@ -174,15 +174,71 @@ dernier lancement.
 
 ## Le pipeline, notebook par notebook
 
-| # | Notebook | Contenu | Entrée | Sortie |
-|---|---|---|---|---|
-| 00 | Lancer le pipeline | Détecte et exécute automatiquement (via papermill) les notebooks 02 à 07 nécessaires et suffisants pour être à jour avec `config.py`, puis 08 | `config.py`, `outputs/etat_pipeline.json` | ré-exécute 02 à 07 (selon besoin) + 08 |
-| 01 | Exploration | Premier coup d'œil aux 3 fichiers bruts, sans rien modifier | `data/raw/*` | — |
-| 02 | Nettoyage des données | **Partie A** caractéristiques (+ filtre automatique des candidates trop incomplètes, section A.3bis), **Partie B** rendements, **Partie C** macro — 3 nettoyages indépendants | `data/raw/*` | `data/interim/*` (+ `caracteristiques_retenues.json`) |
-| 03 | Construction du panel | **Partie A** fusion des 3 fichiers nettoyés, **Partie B** préparation pour la modélisation (filtres taille/liquidité — seuils dans `config.py` —, imputation, winsorizing, rank transform) | `data/interim/*` | `data/processed/*` |
-| 04 | Modèle — Régression linéaire | Benchmark simple, sans hyperparamètre, ré-entraîné à chaque fenêtre ; significativité des variables par Fama-MacBeth (section 6bis) | `panel_pret_modelisation.parquet` | `modeles/regression_lineaire.joblib`, `outputs/predictions_regression_lineaire.parquet`, `outputs/resultats_regression_lineaire*.parquet` (+ `cle_experience`), `outputs/significativite_regression_lineaire.parquet`, + 1 ligne dans `outputs/journal_experiences.parquet` |
-| 05 | Modèle — Elastic Net | Linéaire régularisé, hyperparamètres (dans `config.py`) re-choisis sur la `validation` de chaque fenêtre ; stabilité de sélection des variables (section 6bis) | idem | `modeles/elastic_net.joblib`, `outputs/predictions_elastic_net.parquet`, `outputs/resultats_elastic_net*.parquet` (+ `cle_experience`), `outputs/importance_elastic_net.parquet`, + 1 ligne dans le journal |
-| 06 | Modèle — LightGBM | Gradient boosting, arrêt anticipé sur la `validation` de chaque fenêtre, grille (dans `config.py`) ; importance gain/split + SHAP (section 6bis) | idem | `modeles/lightgbm.joblib`, `outputs/predictions_lightgbm.parquet`, `outputs/resultats_lightgbm*.parquet` (+ `cle_experience`), `outputs/importance_lightgbm.parquet`, + 1 ligne dans le journal |
-| 07 | Évaluation finale (dernier lancement) | **Partie A** comparaison du R²_oos (pooled + évolution par fenêtre), **Partie B** portefeuilles long-short par décile (Sharpe, Sortino, drawdown...) à partir des prédictions déjà sauvegardées, taguées avec `cle_experience` et **ajoutées** (sans rien écraser) à l'historique cumulatif pour le notebook 08, **Synthèse** R²_oos vs Sharpe — toujours le **dernier** modèle entraîné de chaque type ; fait partie du pipeline automatique du notebook 00 | `outputs/resultats_*.parquet`, `outputs/predictions_*.parquet` | `outputs/*` (dont `outputs/performance_portefeuilles.parquet` [instantané] et `outputs/historique_performance_portefeuilles.parquet` [cumulatif], tous deux avec `cle_experience`) |
-| 08 | Comparaison des expériences | Compare **tous** les lancements passés de 04/05/06 entre eux (R²_oos, temps d'entraînement), regroupés par modèle et hyperparamètres spécifiques, enrichis des mesures de portefeuille de l'historique cumulatif du notebook 07 dès qu'elles ont été calculées au moins une fois — ne ré-entraîne rien | `outputs/journal_experiences.parquet`, `outputs/historique_performance_portefeuilles.parquet` | (affichage seulement, rien de sauvegardé) |
+**00 — Lancer le pipeline**
+Détecte et exécute automatiquement (via papermill) les notebooks 02 à 07 nécessaires et
+suffisants pour être à jour avec `config.py`, puis 08.
+- Entrée : `config.py`, `outputs/etat_pipeline.json`
+- Sortie : ré-exécute 02 à 07 (selon besoin) + 08
 
+**01 — Exploration**
+Premier coup d'œil aux 3 fichiers bruts, sans rien modifier.
+- Entrée : `data/raw/*`
+- Sortie : —
+
+**02 — Nettoyage des données**
+Partie A caractéristiques (+ filtre automatique des candidates trop incomplètes, section
+A.3bis), Partie B rendements, Partie C macro — 3 nettoyages indépendants.
+- Entrée : `data/raw/*`
+- Sortie : `data/interim/*` (+ `caracteristiques_retenues.json`)
+
+**03 — Construction du panel**
+Partie A fusion des 3 fichiers nettoyés, Partie B préparation pour la modélisation
+(filtres taille/liquidité — seuils dans `config.py` —, imputation, winsorizing, rank
+transform).
+- Entrée : `data/interim/*`
+- Sortie : `data/processed/*`
+
+**04 — Modèle : régression linéaire**
+Benchmark simple, sans hyperparamètre, ré-entraîné à chaque fenêtre ; significativité des
+variables par Fama-MacBeth (section 6bis).
+- Entrée : `panel_pret_modelisation.parquet`
+- Sortie : `modeles/regression_lineaire.joblib`, `outputs/predictions_regression_lineaire.parquet`,
+  `outputs/resultats_regression_lineaire*.parquet` (+ `cle_experience`),
+  `outputs/significativite_regression_lineaire.parquet`, + 1 ligne dans
+  `outputs/journal_experiences.parquet`
+
+**05 — Modèle : Elastic Net**
+Linéaire régularisé, hyperparamètres (dans `config.py`) re-choisis sur la `validation`
+de chaque fenêtre ; stabilité de sélection des variables (section 6bis).
+- Entrée : `panel_pret_modelisation.parquet`
+- Sortie : `modeles/elastic_net.joblib`, `outputs/predictions_elastic_net.parquet`,
+  `outputs/resultats_elastic_net*.parquet` (+ `cle_experience`),
+  `outputs/importance_elastic_net.parquet`, + 1 ligne dans le journal
+
+**06 — Modèle : LightGBM**
+Gradient boosting, arrêt anticipé sur la `validation` de chaque fenêtre, grille (dans
+`config.py`) ; importance gain/split + SHAP (section 6bis).
+- Entrée : `panel_pret_modelisation.parquet`
+- Sortie : `modeles/lightgbm.joblib`, `outputs/predictions_lightgbm.parquet`,
+  `outputs/resultats_lightgbm*.parquet` (+ `cle_experience`),
+  `outputs/importance_lightgbm.parquet`, + 1 ligne dans le journal
+
+**07 — Évaluation finale (dernier lancement)**
+Partie A comparaison du R²_oos (pooled + évolution par fenêtre), Partie B portefeuilles
+long-short par décile (Sharpe, Sortino, drawdown...) à partir des prédictions déjà
+sauvegardées, taguées avec `cle_experience` et **ajoutées** (sans rien écraser) à
+l'historique cumulatif pour le notebook 08, Synthèse R²_oos vs Sharpe — toujours le
+**dernier** modèle entraîné de chaque type ; fait partie du pipeline automatique du
+notebook 00.
+- Entrée : `outputs/resultats_*.parquet`, `outputs/predictions_*.parquet`
+- Sortie : `outputs/*`, dont `outputs/performance_portefeuilles.parquet` (instantané) et
+  `outputs/historique_performance_portefeuilles.parquet` (cumulatif), tous deux avec
+  `cle_experience`
+
+**08 — Comparaison des expériences**
+Compare **tous** les lancements passés de 04/05/06 entre eux (R²_oos, temps
+d'entraînement), regroupés par modèle et hyperparamètres spécifiques, enrichis des
+mesures de portefeuille de l'historique cumulatif du notebook 07 dès qu'elles ont été
+calculées au moins une fois — ne ré-entraîne rien.
+- Entrée : `outputs/journal_experiences.parquet`, `outputs/historique_performance_portefeuilles.parquet`
+- Sortie : affichage seulement, rien de sauvegardé
