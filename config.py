@@ -177,10 +177,6 @@ ANNEE_DEBUT = 1980
 # SEUIL_MAX_PCT_MANQUANT_CARACTERISTIQUES juste en dessous) -- plutot qu'une
 # selection manuelle figee dans ce fichier.
 #
-# Simple liste a plat : la categorie de chaque caracteristique (taille, valeur,
-# momentum...) n'est utilisee nulle part dans le code, seulement a titre indicatif --
-# elle reste donc en commentaire, a cote de chaque nom, plutot que comme structure
-# (dict de listes) a part entiere.
 # ============================================================
 CARACTERISTIQUES = [
     "mvel1", "beta", "betasq", "chmom", "dolvol", "idiovol", "indmom",
@@ -202,15 +198,6 @@ CARACTERISTIQUES = [
 
 # ============================================================
 # Filtre des caracteristiques par taux de valeurs manquantes
-#
-# Certaines des 94 caracteristiques candidates ci-dessus sont tres incompletes,
-# meme apres ANNEE_DEBUT (ex: donnees de R&D ou de dette securisee, absentes pour une
-# grande partie des entreprises) -- les imputer quand meme (par la mediane du mois,
-# voir notebook 03 partie B.3) revient a remplacer une tres grande fraction de leurs
-# valeurs par une constante par mois, ce qui alourdit le panel sans apporter de signal
-# utilisable, voire ajoute du bruit. Le notebook 02 (partie A, section A.3bis) calcule
-# donc le taux de valeurs manquantes de chaque candidate sur la population
-# annee >= ANNEE_DEBUT, et exclut automatiquement celles au-dessus de ce seuil.
 #
 # ⚠️ Parametre GENERAL (voir journal.py) : il conditionne quelles caracteristiques
 # existent meme, donc il est repercute dans PREDICTEURS -- voir
@@ -270,11 +257,7 @@ MACRO_PREDICTEURS = [
 # ci-dessous -- deux lancements avec un choix de predicteurs different apparaitront comme
 # deux lignes distinctes au notebook 08, meme si tout le reste est identique.
 #
-# ⚠️ Choix par defaut (modele complet, a la GKX) : caracteristiques RETENUES (apres le
-# filtre de valeurs manquantes ci-dessus) + les 8 predicteurs macro. Pour un test
-# rapide du pipeline de bout en bout, utilise plutot une des recettes commentees
-# ci-dessous (ou un sous-ensemble reduit), PUIS reviens au modele complet pour tes
-# resultats finaux.
+
 # ============================================================
 PREDICTEURS = CARACTERISTIQUES_RETENUES
 
@@ -343,7 +326,7 @@ SEUIL_PERCENTILE_LIQUIDITE = 0.90
 # ============================================================
 # Fenetres d'entrainement glissantes / extensives (notebooks 04 a 08)
 #
-# A la Gu, Kelly & Xiu (2020) : chaque modele est ré-entrainé plusieurs fois,
+# Chaque modele est ré-entrainé plusieurs fois,
 # sur une succession de fenetres qui avancent dans le temps. Change les
 # parametres ICI, les notebooks 04 a 08 recoivent automatiquement le
 # changement (la construction des fenetres elle-meme est dans fenetres.py,
@@ -356,18 +339,6 @@ TYPE_FENETRE = "expanding"
 #               annee (il n'oublie jamais rien) -- c'est le choix de GKX (2020).
 # "rolling"   : le train garde une taille FIXE (ANNEES_TRAIN_INITIAL annees) et
 #               glisse dans le temps, en oubliant les annees les plus anciennes.
-#
-# Lequel choisir ? "expanding" est le choix standard dans la litterature
-# (Gu, Kelly & Xiu 2020, et la plupart des papiers de prediction de rendements) :
-# plus de donnees d'entrainement = un modele generalement plus stable, et rien
-# ne justifie d'oublier des annees passees pour ce type de probleme (contrairement,
-# par exemple, a un marche dont la structure changerait radicalement avec le temps).
-# "rolling" a du sens si tu penses que la relation caracteristiques -> rendement
-# n'est pas stable sur toute la periode (ex: le marche d'avant 1990 n'a plus rien
-# a voir avec celui d'aujourd'hui) et que les plus vieilles donnees pourraient
-# degrader la prediction plutot que l'aider -- a tester toi-meme (change juste
-# cette ligne, ré-execute 04 a 08, et compare le R2_oos test des deux modes -- c'est
-# exactement le genre de comparaison que le notebook 08 automatise).
 
 ANNEES_TRAIN_INITIAL = 18    # nb d'annees d'entrainement de la 1ere fenetre (taille FIXE du train si "rolling")
 ANNEES_VALIDATION = 12       # nb d'annees de validation, glisse toujours juste apres le train
