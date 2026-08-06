@@ -245,8 +245,8 @@ CARACTERISTIQUES = [
 # existent meme, donc il est repercute dans PREDICTEURS -- voir
 # `charger_caracteristiques_retenues()` juste en dessous.
 # ============================================================
-SEUIL_MAX_PCT_MANQUANT_CARACTERISTIQUES = 0.30
-# Exclut toute caracteristique manquante sur plus de 30% des lignes (annee >= ANNEE_DEBUT).
+SEUIL_MAX_PCT_MANQUANT_CARACTERISTIQUES = 0.35
+# Exclut toute caracteristique manquante sur plus de 35% des lignes (annee >= ANNEE_DEBUT).
 # Augmente ce seuil pour etre plus permissif (garder plus de caracteristiques, plus
 # imputees), diminue-le pour etre plus strict (panel plus leger, mais moins de
 # caracteristiques). 0.30 est un compromis courant dans la litterature empirique --
@@ -452,9 +452,9 @@ MAX_ITER_ELASTIC_NET = 1000                                # nb max d'iterations
 # section 3). Meme remarque que pour l'Elastic Net ci-dessus sur la separation
 # generaux/specifiques, cruciale pour le regroupement des tableaux au notebook 08.
 # ============================================================
-GRILLE_NUM_LEAVES_LIGHTGBM = [3, 7, 15, 31]                 # nb max de feuilles par arbre : 4 valeurs
+GRILLE_NUM_LEAVES_LIGHTGBM = [7, 15, 31, 63, 127]                # nb max de feuilles par arbre : 5 valeurs
 GRILLE_LEARNING_RATE_LIGHTGBM = [0.01]      # taux d'apprentissage : 1 valeur
-GRILLE_MIN_CHILD_SAMPLES_LIGHTGBM = [500, 2000, 5000]    # nb min d'observations par feuille : 3 valeurs
+GRILLE_MIN_CHILD_SAMPLES_LIGHTGBM = [2000]    # nb min d'observations par feuille : 1 valeur
 GRILLE_N_ESTIMATORS_LIGHTGBM = [500, 1000, 2000]               # budget MAXIMUM d'arbres : 3 valeurs
 # ⚠️ Interaction avec STOPPING_ROUNDS_LIGHTGBM ci-dessous : si l'arret anticipe se
 # declenche AVANT le plus petit budget de la grille, toutes les valeurs de
@@ -462,4 +462,4 @@ GRILLE_N_ESTIMATORS_LIGHTGBM = [500, 1000, 2000]               # budget MAXIMUM 
 # jamais). La colonne 'nb_arbres_utilises' du tableau de grille (rapport '06_lightgbm',
 # affiche au notebook 06) permet de le verifier d'un coup d'oeil : si elle est toujours
 # strictement inferieure au plus petit budget, autant revenir a une seule valeur.
-STOPPING_ROUNDS_LIGHTGBM = 60                            # arret si pas d'amelioration sur la validation depuis N arbres d'affilee
+STOPPING_ROUNDS_LIGHTGBM = 200                            # arret si pas d'amelioration sur la validation depuis N arbres d'affilee
