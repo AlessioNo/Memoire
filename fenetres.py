@@ -204,3 +204,29 @@ def resumer_fenetres(liste_fenetres):
             'annee_test': f['annee_test'],
         })
     return pd.DataFrame(lignes)
+
+
+def restreindre_debut_entrainement(panel, annee_debut_entrainement, colonne='annee_mois'):
+    """Ne garde que les lignes a partir de ANNEE_DEBUT_ENTRAINEMENT (config.py).
+
+    ⚠️ A ne pas confondre avec ANNEE_DEBUT, qui filtre la base des l'etape 02 : ici, les
+    donnees anterieures existent toujours dans panel_pret_modelisation.parquet, elles sont
+    simplement ignorees pour construire les fenetres et entrainer les modeles. Retarder
+    cette date se teste donc en relancant seulement 04/05/06, sans repasser par 02 ni 03.
+
+    Utilise par les 3 scripts de modelisation (etape04, etape05, etape06) : la meme
+    restriction pour les 3, sinon leurs R2_oos ne seraient plus comparables entre eux.
+    """
+    annees = panel[colonne].astype(str).str[:4].astype(int)
+    avant = len(panel)
+    panel = panel[annees >= annee_debut_entrainement].copy()
+
+    if panel.empty:
+        raise ValueError(
+            f"Aucune ligne restante apres ANNEE_DEBUT_ENTRAINEMENT={annee_debut_entrainement} : "
+            "cette annee est posterieure a la fin du panel. Corrige la valeur dans config.py."
+        )
+
+    print(f"Debut d'entrainement fixe a {annee_debut_entrainement} : {avant} -> {len(panel)} lignes "
+          f"({(avant - len(panel)) / avant * 100:.2f}% ignorees)")
+    return panel

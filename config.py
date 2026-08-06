@@ -1,9 +1,14 @@
 """
 Parametres partages entre plusieurs notebooks du projet.
 
-Modifie les valeurs ICI, une seule fois : les notebooks qui les importent
-(01 a 08) recevront automatiquement le changement, au lieu d'avoir a le
-repeter (et risquer un oubli) dans chaque notebook.
+Modifie les valeurs ICI, une seule fois : les scripts de calcul (scripts/etape02
+a etape06) et les notebooks d'affichage (01 a 08) qui les importent recevront
+automatiquement le changement, au lieu d'avoir a le repeter (et risquer un oubli)
+a plusieurs endroits.
+
+⚠️ Apres avoir change une valeur ici, il faut RELANCER A LA MAIN le ou les scripts
+concernes (voir README.md, tableau "Quel script relancer apres quel changement ?"),
+puis re-executer le notebook correspondant pour en visualiser le resultat.
 
 Ce fichier distingue explicitement deux familles de parametres, chacune reperee plus bas par un bandeau
 "Parametres GENERAUX" / "Parametres SPECIFIQUES" :
@@ -13,8 +18,8 @@ Ce fichier distingue explicitement deux familles de parametres, chacune reperee 
 - Les parametres SPECIFIQUES a un modele ne concernent qu'un seul modele (ex: la grille
   d'alpha de l'Elastic Net n'a aucun sens pour LightGBM).
 Cette distinction est reprise telle quelle par `journal.py`, qui enregistre les deux a
-chaque entrainement (04/05/06) pour permettre la comparaison au notebook 08 -- voir sa
-docstring pour le detail.
+chaque entrainement (scripts/etape04, 05, 06) pour permettre la comparaison au notebook 08
+-- voir sa docstring pour le detail.
 """
 
 from pathlib import Path
@@ -115,15 +120,6 @@ FICHIER_EVOLUTION_R2_PNG = OUTPUTS_DIR / "evolution_r2_oos_par_fenetre.png"
 # les fenetres glissantes).
 FICHIER_JOURNAL_EXPERIENCES = OUTPUTS_DIR / "journal_experiences.parquet"
 
-# Etat du pipeline automatise (notebook 00 + pipeline.py) : pour chaque notebook parmi 02 a
-# 06, la derniere fois qu'il a ete execute AVEC SUCCES par pipeline.py, et les valeurs des
-# parametres de config.py dont il depend a ce moment-la -- sert a detecter automatiquement
-# quels notebooks sont "sales" (a re-executer) apres un changement de config.py. Voir
-# pipeline.py pour toute la logique. N'est PAS mis a jour si tu executes un notebook
-# manuellement (Run All) plutot que via pipeline.py -- dans ce cas, pipeline.py le
-# considerera toujours a jour tant que ses parametres n'ont pas change depuis SON dernier
-# passage a lui (ce qui reste correct, juste pas au courant du lancement manuel).
-FICHIER_ETAT_PIPELINE = OUTPUTS_DIR / "etat_pipeline.json"
 
 
 # ============================================================
@@ -151,7 +147,7 @@ FICHIER_DECILES_PNG = OUTPUTS_DIR / "portefeuilles_rendement_par_decile.png"
 def assurer_dossiers():
     """Cree les dossiers de sortie du projet s'ils n'existent pas deja.
 
-    Utile au premier lancement du pipeline (ou apres un clone du depot),
+    Utile au premier lancement du projet (ou apres un clone du depot),
     puisque data/interim, data/processed, modeles/ et outputs/ ne contiennent
     pas de fichiers versionnes par defaut et peuvent donc etre absents.
     N'a aucun effet si les dossiers existent deja (appel sans risque a
@@ -179,6 +175,52 @@ ANNEE_DEBUT = 1980
 #
 # ============================================================
 CARACTERISTIQUES = [
+    # --- Tendances de prix / momentum (6) ---
+    'mom1m',        # momentum 1 mois (reversion court terme)
+    'mom6m',        # momentum 6 mois
+    'mom12m',       # momentum 12 mois
+    'chmom',        # variation du momentum 6 mois
+    'indmom',       # momentum sectoriel
+    'maxret',       # rendement quotidien maximum du mois
+
+    # --- Taille et liquidite (7) ---
+    'mvel1',        # taille (capitalisation) -- ⚠️ requis par le filtre de l'etape 03
+    'dolvol',       # volume echange en dollars
+    'turn',         # rotation des titres
+    'std_turn',     # volatilite de la rotation
+    'ill',          # illiquidite d'Amihud -- ⚠️ requis par le filtre de l'etape 03
+    'zerotrade',    # jours sans echange
+    'baspread',     # ecart bid-ask
+
+    # --- Risque et volatilite (3) ---
+    'retvol',       # volatilite des rendements
+    'idiovol',      # volatilite idiosyncratique
+    'beta',         # beta de marche
+
+    # --- Valorisation (4) ---
+    'bm',           # book-to-market
+    'ep',           # benefices / prix
+    'sp',           # ventes / prix
+    'cfp',          # cash-flow / prix
+
+    # --- Investissement et croissance (4) ---
+    'agr',          # croissance des actifs
+    'chcsho',       # variation du nombre d'actions
+    'egr',          # croissance des capitaux propres
+    'invest',       # investissements et stocks
+
+    # --- Rentabilite (4) ---
+    'gma',          # rentabilite brute (Novy-Marx)
+    'operprof',     # rentabilite operationnelle (Fama-French 2015)
+    'roaq',         # rentabilite des actifs
+    'roeq',         # rentabilite des capitaux propres
+
+    # --- Qualite des resultats (2) ---
+    'acc',          # accruals (Sloan 1996)
+    'chtx',         # variation de la charge fiscale
+]
+
+"""CARACTERISTIQUES = [
     "mvel1", "beta", "betasq", "chmom", "dolvol", "idiovol", "indmom",
     "mom1m", "mom6m", "mom12m", "mom36m", "pricedelay", "turn",
     "absacc", "acc", "age", "agr", "bm", "bm_ia", "cashdebt", "cashpr",
@@ -193,7 +235,7 @@ CARACTERISTIQUES = [
     "aeavol", "cash", "chtx", "cinvest", "ear", "nincr", "roaq", "roavol",
     "roeq", "rsup", "stdacc", "stdcf", "ms", "baspread", "ill", "maxret",
     "retvol", "std_dolvol", "std_turn", "zerotrade",
-]
+]"""
 
 
 # ============================================================
@@ -340,13 +382,34 @@ TYPE_FENETRE = "expanding"
 # "rolling"   : le train garde une taille FIXE (ANNEES_TRAIN_INITIAL annees) et
 #               glisse dans le temps, en oubliant les annees les plus anciennes.
 
+# Annee de DEBUT DE L'ENTRAINEMENT des modeles (etapes 04, 05, 06).
+#
+# ⚠️ A ne pas confondre avec ANNEE_DEBUT (section "Nettoyage") : ANNEE_DEBUT filtre la
+# BASE DE DONNEES elle-meme des l'etape 02 (les annees anterieures n'existent nulle part
+# ensuite) ; ANNEE_DEBUT_ENTRAINEMENT ne filtre QUE le panel utilise pour entrainer les
+# modeles. Les donnees restent dans panel_pret_modelisation.parquet, elles sont
+# simplement ignorees au moment de construire les fenetres.
+#
+# A quoi ca sert : tester si demarrer l'entrainement plus tard (donnees plus completes,
+# regime de marche plus recent) ameliore ou degrade la performance, SANS avoir a
+# re-executer les etapes 02 et 03 -- il suffit de relancer 04/05/06.
+#
+# ⚠️ Si tu retardes cette date, la periode disponible raccourcit d'autant : il faut
+# ajuster A LA MAIN ANNEES_TRAIN_INITIAL et/ou ANNEES_VALIDATION ci-dessous, sinon il
+# reste moins d'annees de test a la fin (voire aucune fenetre generee -- fenetres.py
+# leve alors une erreur explicite).
+#
+# Doit etre >= ANNEE_DEBUT. Mettre la meme valeur que ANNEE_DEBUT = aucun filtre
+# supplementaire (comportement d'origine).
+ANNEE_DEBUT_ENTRAINEMENT = 1980
+
 ANNEES_TRAIN_INITIAL = 18    # nb d'annees d'entrainement de la 1ere fenetre (taille FIXE du train si "rolling")
 ANNEES_VALIDATION = 12       # nb d'annees de validation, glisse toujours juste apres le train
 ANNEES_TEST_PAR_FENETRE = 4  # nb d'annees de test par fenetre avant de ré-entrainer (1 = ré-entrainement annuel, comme GKX)
 
 # ⚠️ Augmenter ANNEES_TEST_PAR_FENETRE reduit le nombre de fenetres (donc le temps
 # de calcul total, surtout pour le notebook 06 LightGBM) au prix d'un ré-entrainement
-# moins frequent -- utile si le pipeline est trop lent sur ton PC.
+# moins frequent -- utile si scripts/etape06_modele_lightgbm.py est trop lent sur ton PC.
 
 
 # ============================================================
@@ -389,8 +452,14 @@ MAX_ITER_ELASTIC_NET = 1000                                # nb max d'iterations
 # section 3). Meme remarque que pour l'Elastic Net ci-dessus sur la separation
 # generaux/specifiques, cruciale pour le regroupement des tableaux au notebook 08.
 # ============================================================
-GRILLE_NUM_LEAVES_LIGHTGBM = [7, 15, 31]                 # nb max de feuilles par arbre : 3 valeurs
-GRILLE_LEARNING_RATE_LIGHTGBM = [0.005, 0.01, 0.03]      # taux d'apprentissage : 3 valeurs
+GRILLE_NUM_LEAVES_LIGHTGBM = [3, 7, 15, 31]                 # nb max de feuilles par arbre : 4 valeurs
+GRILLE_LEARNING_RATE_LIGHTGBM = [0.01]      # taux d'apprentissage : 1 valeur
 GRILLE_MIN_CHILD_SAMPLES_LIGHTGBM = [500, 2000, 5000]    # nb min d'observations par feuille : 3 valeurs
-N_ESTIMATORS_LIGHTGBM = 1000                             # budget MAXIMUM d'arbres (l'arret anticipe le coupe generalement bien avant)
-STOPPING_ROUNDS_LIGHTGBM = 50                            # arret si pas d'amelioration sur la validation depuis N arbres d'affilee
+GRILLE_N_ESTIMATORS_LIGHTGBM = [500, 1000, 2000]               # budget MAXIMUM d'arbres : 3 valeurs
+# ⚠️ Interaction avec STOPPING_ROUNDS_LIGHTGBM ci-dessous : si l'arret anticipe se
+# declenche AVANT le plus petit budget de la grille, toutes les valeurs de
+# GRILLE_N_ESTIMATORS_LIGHTGBM donnent exactement le MEME modele (le budget ne mord
+# jamais). La colonne 'nb_arbres_utilises' du tableau de grille (rapport '06_lightgbm',
+# affiche au notebook 06) permet de le verifier d'un coup d'oeil : si elle est toujours
+# strictement inferieure au plus petit budget, autant revenir a une seule valeur.
+STOPPING_ROUNDS_LIGHTGBM = 60                            # arret si pas d'amelioration sur la validation depuis N arbres d'affilee

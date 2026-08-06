@@ -7,7 +7,7 @@ contient de la LOGIQUE (des fonctions) reutilisee par les notebooks 04, 05, 06 (
 ecrire) et 08 (pour lire) -- les regrouper ici evite de copier-coller les memes fonctions
 dans 4 notebooks differents.
 
-Le probleme que ce fichier resout : les notebooks 04/05/06 ECRASENT leurs fichiers de
+Le probleme que ce fichier resout : les scripts 04/05/06 ECRASENT leurs fichiers de
 resultats (outputs/resultats_*.parquet) a chaque execution -- un seul jeu de resultats a
 la fois, celui du dernier lancement (c'est voulu : le notebook 07 doit toujours pouvoir
 lire "le" dernier modele entraine, sans ambiguite). Mais ca veut dire qu'on ne peut PAS
@@ -88,6 +88,7 @@ def params_generaux_actuels():
     return {
         'predicteurs': list(config.PREDICTEURS),
         'type_fenetre': config.TYPE_FENETRE,
+        'annee_debut_entrainement': config.ANNEE_DEBUT_ENTRAINEMENT,
         'annees_train_initial': config.ANNEES_TRAIN_INITIAL,
         'annees_validation': config.ANNEES_VALIDATION,
         'annees_test_par_fenetre': config.ANNEES_TEST_PAR_FENETRE,
@@ -107,7 +108,7 @@ def cle_experience_actuelle(modele, params_specifiques):
     `enregistrer_experience` plus loin dans le notebook (memes arguments = meme hash, voir
     `_cle_experience`).
 
-    A quoi ca sert : les notebooks 04/05/06 (section 7) appellent cette fonction pour
+    A quoi ca sert : les scripts scripts/etape04, etape05 et etape06 appellent cette fonction pour
     taguer leur `resultats_finaux` (nouvelle colonne 'cle_experience') AVANT meme d'appeler
     `enregistrer_experience` (section 8) -- cette colonne se retrouve donc dans
     `outputs/resultats_*.parquet`, que lit ensuite le notebook 07. Celui-ci la reutilise a
@@ -154,7 +155,7 @@ def _label_params_specifiques(params_specifiques):
 
 
 # ============================================================
-# Ecriture (appelee par les notebooks 04, 05, 06, section 7)
+# Ecriture (appelee par les scripts scripts/etape04, etape05, etape06)
 # ============================================================
 
 def enregistrer_experience(modele, params_specifiques, resultats, duree_entrainement_secondes):
@@ -167,7 +168,7 @@ def enregistrer_experience(modele, params_specifiques, resultats, duree_entraine
     ----------
     modele : str
         Nom du modele, ex: "Regression lineaire", "Elastic Net", "LightGBM" -- garde le
-        meme nom d'un notebook a l'autre pour que le notebook 08 les reconnaisse.
+        meme nom d'un script a l'autre pour que le notebook 08 les reconnaisse.
     params_specifiques : dict
         Hyperparametres propres a CE modele uniquement (dict vide {} pour la regression
         lineaire, qui n'en a aucun). Ex pour l'Elastic Net :
@@ -176,11 +177,11 @@ def enregistrer_experience(modele, params_specifiques, resultats, duree_entraine
          'max_iter': config.MAX_ITER_ELASTIC_NET}
     resultats : dict
         Doit contenir au moins 'r2_oos_train', 'r2_oos_validation', 'r2_oos_test' et
-        'n_fenetres' (voir notebooks 04/05/06, section 4).
+        'n_fenetres' (voir scripts/etape04, etape05, etape06).
     duree_entrainement_secondes : float
         Temps total d'entrainement, TOUTES fenetres confondues (recherche
         d'hyperparametres incluse) -- mesure avec time.perf_counter() autour de la
-        boucle d'entrainement, voir notebooks 04/05/06 section 3.
+        boucle d'entrainement, voir scripts/etape04, etape05, etape06.
 
     Retourne
     --------
@@ -209,6 +210,7 @@ def enregistrer_experience(modele, params_specifiques, resultats, duree_entraine
         'gen_n_predicteurs': len(params_generaux_json['predicteurs']),
         'gen_predicteurs_json': json.dumps(params_generaux_json['predicteurs']),
         'gen_type_fenetre': params_generaux_json['type_fenetre'],
+        'gen_annee_debut_entrainement': params_generaux_json['annee_debut_entrainement'],
         'gen_annees_train_initial': params_generaux_json['annees_train_initial'],
         'gen_annees_validation': params_generaux_json['annees_validation'],
         'gen_annees_test_par_fenetre': params_generaux_json['annees_test_par_fenetre'],
@@ -234,7 +236,7 @@ _COLONNES_JOURNAL = [
     'cle_experience', 'horodatage', 'modele', 'duree_entrainement_secondes',
     'params_specifiques_json', 'params_specifiques_label',
     'gen_n_predicteurs', 'gen_predicteurs_json', 'gen_type_fenetre',
-    'gen_annees_train_initial', 'gen_annees_validation', 'gen_annees_test_par_fenetre',
+    'gen_annee_debut_entrainement', 'gen_annees_train_initial', 'gen_annees_validation', 'gen_annees_test_par_fenetre',
     'gen_seuil_percentile_taille', 'gen_seuil_percentile_liquidite',
     'res_n_fenetres', 'res_r2_oos_train', 'res_r2_oos_validation', 'res_r2_oos_test',
 ]
@@ -350,6 +352,7 @@ def enregistrer_performances_portefeuilles(performance):
 _NOMS_AFFICHAGE = {
     'gen_n_predicteurs': 'n_predicteurs',
     'gen_type_fenetre': 'type_fenetre',
+    'gen_annee_debut_entrainement': 'annee_debut_entrainement',
     'gen_annees_train_initial': 'annees_train_initial',
     'gen_annees_validation': 'annees_validation',
     'gen_annees_test_par_fenetre': 'annees_test_par_fenetre',
@@ -364,7 +367,8 @@ _NOMS_AFFICHAGE = {
 }
 
 COLONNES_PARAMS_GENERAUX = [
-    'gen_n_predicteurs', 'gen_type_fenetre', 'gen_annees_train_initial',
+    'gen_n_predicteurs', 'gen_type_fenetre', 'gen_annee_debut_entrainement',
+    'gen_annees_train_initial',
     'gen_annees_validation', 'gen_annees_test_par_fenetre',
     'gen_seuil_percentile_taille', 'gen_seuil_percentile_liquidite',
 ]

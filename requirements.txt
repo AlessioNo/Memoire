@@ -10,9 +10,6 @@ matplotlib>=3.8
 shap>=0.45
 joblib>=1.4
 
-# pipeline orchestration (notebook 00)
-papermill>=2.6
-
-# jupyter (to open/run the notebooks at all)
+# jupyter (to open/run the display notebooks; scripts/ run with plain python)
 jupyter>=1.0
 ipykernel>=6.29
