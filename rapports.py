@@ -1,6 +1,6 @@
 """
-Rapports d'execution : le pont entre les SCRIPTS (scripts/etape02 a etape06, qui
-CALCULENT) et les NOTEBOOKS (02 a 06, qui AFFICHENT).
+Rapports d'execution : le pont entre les SCRIPTS (scripts/etape02 a etape07, qui
+CALCULENT) et les NOTEBOOKS (02 a 07, qui AFFICHENT).
 
 Pourquoi ce fichier existe
 --------------------------
@@ -16,8 +16,12 @@ module s'occupe de tout le RESTE : les petits tableaux et compteurs qui n'etaien
 jusqu'ici qu'imprimes a l'ecran au fil des cellules, et qui seraient donc perdus si
 personne ne les ecrivait sur disque.
 
-Meme esprit que utils.py / fenetres.py / journal.py : une seule version de cette
-plomberie, reutilisee par les 5 scripts et les 5 notebooks, plutot que copiee-collee.
+Meme esprit que fenetres.py / journal.py : une seule version de cette plomberie, reutilisee
+par tous les scripts et tous les notebooks, plutot que copiee-collee.
+
+ℹ️ Ce module heberge aussi `nettoyer_pour_json` (ex-utils.py, supprime) : la conversion des
+types numpy en types Python natifs, utilisee ici pour les valeurs de diagnostic et par
+journal.py pour la cle de deduplication des experiences.
 
 Ou ca va sur le disque
 ----------------------
@@ -52,23 +56,48 @@ correspondant n'a jamais tourne -- plutot qu'un `FileNotFoundError` illisible.
 import json
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 
-import config
-import utils
+import chemins
 
 
 # Dossier des rapports, derive de config.OUTPUTS_DIR (jamais ecrit en dur).
-DOSSIER_RAPPORTS = config.OUTPUTS_DIR / "rapports"
+DOSSIER_RAPPORTS = chemins.RAPPORTS_DIR
 
 # Quel script relancer quand un rapport manque -- sert au message d'erreur de `charger`.
 SCRIPT_PAR_RAPPORT = {
-    '02_nettoyage': 'scripts/etape02_nettoyage_donnees.py',
-    '03_panel': 'scripts/etape03_construction_panel.py',
-    '04_regression_lineaire': 'scripts/etape04_modele_lineaire.py',
-    '05_elastic_net': 'scripts/etape05_modele_elastic_net.py',
-    '06_lightgbm': 'scripts/etape06_modele_lightgbm.py',
+    '02_nettoyage': 'scripts/nettoyage_donnees.py',
+    '03_panel': 'scripts/construction_panel.py',
+    '04_regression_lineaire': 'scripts/entrainer/lineaire_h1.py',
+    '05_elastic_net': 'scripts/entrainer/elastic_net_h1.py',
+    '06_lightgbm': 'scripts/entrainer/lightgbm_h1.py',
+    '07_random_forest': 'scripts/entrainer/random_forest_h1.py',
+    '10_taille': 'scripts/analyse_par_taille.py',
+    '11_horizon_lineaire': 'scripts/entrainer/lineaire_h12.py',
+    '12_horizon_elastic_net': 'scripts/entrainer/elastic_net_h12.py',
+    '13_horizon_lightgbm': 'scripts/entrainer/lightgbm_h12.py',
+    '14_horizon_random_forest': 'scripts/entrainer/random_forest_h12.py',
 }
+
+
+def nettoyer_pour_json(valeur):
+    """Convertit recursivement les types numpy (array, float64, int64...) en types
+    natifs Python, pour pouvoir serialiser en JSON. Utilise a chaque fois qu'on doit
+    comparer ou sauvegarder des parametres issus de config.py :
+    - journal.py  : cle de deduplication des experiences, colonne 'params_specifiques_json'
+    - rapports.py : valeurs de diagnostic ecrites par les scripts de calcul, relues par les
+      notebooks d'affichage (outputs/rapports/*.json)
+    """
+    if isinstance(valeur, dict):
+        return {cle: nettoyer_pour_json(v) for cle, v in valeur.items()}
+    if isinstance(valeur, (list, tuple, np.ndarray)):
+        return [nettoyer_pour_json(v) for v in valeur]
+    if isinstance(valeur, np.integer):
+        return int(valeur)
+    if isinstance(valeur, np.floating):
+        return float(valeur)
+    return valeur
 
 
 # Sentinelle : permet de distinguer "aucun argument passe" (= lecture) de "argument
@@ -95,7 +124,7 @@ class Rapport:
         """ECRIT une valeur si `valeur` est fourni, la RELIT sinon.
 
         Valeurs acceptees : nombre, texte, booleen, liste, dict, tuple. Les types numpy
-        sont convertis en types Python natifs (via utils.nettoyer_pour_json) pour pouvoir
+        sont convertis en types Python natifs (via nettoyer_pour_json) pour pouvoir
         etre serialises en JSON -- exactement comme le fait deja journal.py pour les
         parametres de config.py.
 
@@ -109,7 +138,7 @@ class Rapport:
                     f"Valeurs disponibles : {sorted(self.valeurs)}"
                 )
             return self.valeurs[cle]
-        self.valeurs[cle] = utils.nettoyer_pour_json(valeur)
+        self.valeurs[cle] = nettoyer_pour_json(valeur)
         return valeur
 
     def table(self, cle, donnees=_MANQUANT):

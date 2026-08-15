@@ -7,7 +7,7 @@ AFFICHER ce que ce script a produit (voir rapports.py).
 
 Lancement, depuis la RACINE du projet :
 
-    python scripts/etape02_nettoyage_donnees.py
+    python scripts/nettoyage_donnees.py
 
 Trois parties independantes entre elles (aucune ne lit le resultat d'une autre) :
   A -- Caracteristiques (datashare.parquet)  -> data/interim/characteristics_clean.parquet

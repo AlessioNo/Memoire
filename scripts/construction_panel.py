@@ -7,11 +7,11 @@ ce que ce script a produit (voir rapports.py).
 
 Lancement, depuis la RACINE du projet :
 
-    python scripts/etape03_construction_panel.py
+    python scripts/construction_panel.py
 
     # ou, pour ne rejouer QUE la partie B (filtres/imputation/rank transform) a partir
     # de data/processed/panel_final.parquet, sans refaire la fusion (partie A) :
-    python scripts/etape03_construction_panel.py --partie-b-seulement
+    python scripts/construction_panel.py --partie-b-seulement
 
 Deux parties SEQUENTIELLES (contrairement a l'etape 02) :
   A -- Fusion des 3 fichiers de data/interim/ + cible excess_return
@@ -20,10 +20,19 @@ Deux parties SEQUENTIELLES (contrairement a l'etape 02) :
        winsorizing, rank transform)
        -> data/processed/panel_pret_modelisation.parquet
 
-⚠️ Pre-requis : avoir deja lance `python scripts/etape02_nettoyage_donnees.py`.
+⚠️ Pre-requis : avoir deja lance `python scripts/nettoyage_donnees.py`.
 
-Parametres, tous dans config.py : SEUIL_PERCENTILE_TAILLE, SEUIL_PERCENTILE_LIQUIDITE
-(+ CARACTERISTIQUES_RETENUES, lu automatiquement dans le manifeste ecrit par l'etape 02).
+Parametres, tous dans config.py : SEUIL_PERCENTILE_TAILLE, SEUIL_PERCENTILE_LIQUIDITE,
+(+ CARACTERISTIQUES_RETENUES, lu automatiquement dans le manifeste
+ecrit par l'etape 02).
+
+La partie B ajoute au passage une colonne purement DESCRIPTIVE au panel (section B.2bis),
+utilisee par la seule etape 10 :
+  - `mvel1_brut` : la capitalisation boursiere AVANT winsorizing et rank transform (apres
+                   quoi mvel1 vit dans [-1, 1] et n'est plus interpretable en dollars)
+⚠️ Ce n'est JAMAIS un predicteur : les etapes 04 a 07 selectionnent explicitement
+config.PREDICTEURS, elles ignorent donc cette colonne. L'ajouter ne change aucun resultat
+de modelisation.
 
 Ni decoupage temporel ni standardisation macro ici : les deux dependent de la fenetre
 en cours et sont recalcules a la volee par fenetres.py (etapes 04 a 06).
@@ -39,6 +48,7 @@ import numpy as np
 import pandas as pd
 
 import config
+import horizon
 import rapports
 
 
@@ -126,6 +136,19 @@ def construire_panel_fusionne(rap):
     panel = pd.merge(panel, rfree_avec_cle, on='annee_mois', how='left')
     rap.valeur('A_lignes_apres_fusion_rfree', int(len(panel)))
 
+    # --- A.5bis Calcul de la cible composee sur HORIZON_PREDICTION_MOIS mois ---
+    #
+    # ⚠️ EMPLACEMENT CRITIQUE, a deux titres.
+    # (a) Le calcul porte sur `returns`, l'historique de rendements COMPLET issu de l'etape
+    #     02, et surtout PAS sur `panel` : la fusion A.4 est un inner join
+    #     (caracteristiques ∩ rendements) et la partie B retirera encore des titres-mois.
+    #     Composer sur `panel` reviendrait a enjamber silencieusement les mois que nos
+    #     propres filtres ont retires, donc a calculer un rendement sur 12 mois NON
+    #     CONSECUTIFS -- sans la moindre erreur ni le moindre avertissement.
+    # (b) Ici, et pas plus bas : `returns` est libere juste apres. Seul le petit DataFrame
+    #     de resultat est conserve, pour le rattachement en A.6bis.
+    cible_longue = horizon.construire_cible_horizon(returns, macro, rap=rap)
+
     del chars, returns
     gc.collect()
 
@@ -146,6 +169,28 @@ def construire_panel_fusionne(rap):
     rap.table('A_apercu_cible',
               panel[['permno', 'annee_mois', 'RET', 'Rfree', 'excess_return']].head())
     rap.table('A_describe_cible', panel['excess_return'].describe().rename('excess_return'))
+
+    # --- A.5ter Rattachement de la cible longue (calculee en A.5bis) ---
+    #
+    # ⚠️ Cette colonne S'AJOUTE a `excess_return`, elle ne la remplace pas : les deux cibles
+    # cohabitent dans le panel. Les etapes 04 a 07 continuent d'utiliser `excess_return` et
+    # ignorent celle-ci ; les etapes 11 a 14 font l'inverse. Une seule construction de panel
+    # suffit donc pour les deux pistes, et la piste a 1 mois n'est en rien affectee.
+    nom_cible_longue = config.nom_cible_horizon()
+
+    panel = panel.merge(cible_longue.drop(columns='statut_titre'),
+                        on=['permno', 'annee_mois'], how='left')
+    n_avec_cible = int(panel[nom_cible_longue].notna().sum())
+    print(f"Cible {nom_cible_longue} rattachee au panel : {n_avec_cible} lignes "
+          f"({n_avec_cible / len(panel) * 100:.1f} %) -- les autres ont un horizon "
+          "incomplet (trou au milieu de l'historique, ou censure de fin d'echantillon).")
+    rap.valeur('A_nom_cible_longue', nom_cible_longue)
+    rap.valeur('A_n_lignes_avec_cible_longue', n_avec_cible)
+    rap.valeur('A_pct_lignes_avec_cible_longue', float(n_avec_cible / len(panel) * 100))
+    rap.table('A_apercu_cible_longue',
+              panel.loc[panel[nom_cible_longue].notna(),
+                        ['permno', 'annee_mois', 'excess_return', nom_cible_longue,
+                         'n_mois_horizon_observes']].head())
 
     del macro, macro_predicteurs_decales, rfree_avec_cle
     del permnos_chars, permnos_returns, communs, periodes_chars, periodes_returns, periodes_macro
@@ -284,6 +329,33 @@ def preparer_panel_modelisation(panel, rap):
     print(f"Effet cumule des filtres : {avant_dropna_mvel1} -> {len(panel)} lignes "
           f"({(avant_dropna_mvel1 - len(panel)) / avant_dropna_mvel1 * 100:.2f}% retirees au total)")
 
+    # --- B.2bis Capitalisation boursiere brute (pour l'etape 10) ---
+    #
+    # ⚠️ EMPLACEMENT CRITIQUE : ici, mvel1 est encore la capitalisation boursiere BRUTE
+    # (en unites monetaires), et l'univers est deja celui qui servira reellement a la
+    # modelisation (post-filtres taille et liquidite). Quelques lignes plus bas, le
+    # winsorizing puis le rank transform ecrasent mvel1 dans [-1, 1] : la capitalisation
+    # en dollars est alors DEFINITIVEMENT perdue, et il devient impossible de dire "les
+    # entreprises de plus de X dollars". D'ou cette copie, la SEULE chose que l'etape 03
+    # ait besoin de conserver pour l'etape 10.
+    #
+    # ℹ️ Le decoupage en segments de taille (mediane / terciles / seuils en dollars...) n'est
+    # PAS calcule ici : ce n'est qu'une derivation de cette colonne, et l'etape 10 la
+    # recalcule elle-meme a partir de config.MODE_GROUPES_TAILLE. Changer de decoupage
+    # n'oblige donc PAS a relancer l'etape 03 -- et surtout, il ne peut pas y avoir de
+    # desynchronisation entre un decoupage fige dans le panel et celui de config.py.
+    #
+    # Cette colonne n'est JAMAIS un predicteur : les etapes 04 a 07 selectionnent
+    # explicitement config.PREDICTEURS, donc elles l'ignorent. L'ajouter au panel ne change
+    # STRICTEMENT RIEN aux modeles deja entraines.
+    colonne_mvel1_brut = config.COLONNE_MVEL1_BRUT
+    panel[colonne_mvel1_brut] = panel['mvel1'].astype('float64')
+
+    rap.table('B_capitalisation_brute', panel[colonne_mvel1_brut].describe())
+    print(f"Capitalisation brute conservee dans '{colonne_mvel1_brut}' "
+          f"(mediane = {panel[colonne_mvel1_brut].median():,.0f}, "
+          f"avant winsorizing et rank transform)")
+
     # --- B.3 Imputation (mediane du mois, sur la population post-filtres) ---
     rap.table('B_missing_avant_imputation',
               (panel[caracteristiques].isna().mean() * 100).sort_values(ascending=False).rename('pct_manquant'))
@@ -347,7 +419,8 @@ def preparer_panel_modelisation(panel, rap):
             panel[col] = panel[col].astype(panel[col].cat.categories.dtype)
 
     rap.table('B_apercu_final',
-              panel[['permno', 'annee_mois'] + caracteristiques[:5] + macro_predicteurs[:2] + [cible]].head())
+              panel[['permno', 'annee_mois', config.COLONNE_MVEL1_BRUT]
+                    + caracteristiques[:5] + macro_predicteurs[:2] + [cible]].head())
 
     panel.to_parquet(config.FICHIER_PANEL_MODELISATION, index=False)
     print("Fichier sauvegarde :", config.FICHIER_PANEL_MODELISATION)

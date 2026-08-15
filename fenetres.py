@@ -21,6 +21,28 @@ avancent dans le temps :
     fenetre 2 : train [1980-1999] | validation [2000-2011] | test [2012]   (expanding)
         ...
 
+Option : reduction progressive de la validation
+-----------------------------------------------
+La validation peut RETRECIR au fil des fenetres (config.py, section "Fenetres
+d'entrainement" : REDUCTION_VALIDATION_PAR_FENETRE, FENETRE_DEBUT_REDUCTION_VALIDATION,
+ANNEES_VALIDATION_MINIMUM). Avec une reduction de 1 an par fenetre a partir de la
+fenetre 1, un train initial de 10 ans et une validation initiale de 10 ans :
+
+    fenetre 0 : train [1980-1989] | validation [1990-1999] (10 ans) | test [2000]
+    fenetre 1 : train [1980-1991] | validation [1992-2000] ( 9 ans) | test [2001]  (expanding)
+        ou   : train [1982-1991] | validation [1992-2000] ( 9 ans) | test [2001]  (rolling)
+    fenetre 2 : train [1980-1993] | validation [1994-2001] ( 8 ans) | test [2002]  (expanding)
+        ...
+
+⚠️ Ce qui est FIXE dans ce protocole, c'est le test : il avance toujours de
+ANNEES_TEST_PAR_FENETRE d'une fenetre a l'autre, sans trou ni chevauchement (sinon la
+serie hors-echantillon mise bout a bout, et donc le R2_oos final, n'aurait plus de sens).
+La validation est donc calee sur la FIN (elle s'arrete toujours juste avant le test), et
+le train occupe tout ce qui reste devant elle. Consequence : l'annee liberee par la
+validation n'est pas perdue, elle passe au train -- en "expanding" le train grandit de
+ANNEES_TEST_PAR_FENETRE + REDUCTION_VALIDATION_PAR_FENETRE par fenetre (au lieu de
+ANNEES_TEST_PAR_FENETRE seul), en "rolling" il garde sa taille fixe et glisse d'autant.
+
 A chaque fenetre, le modele est ré-entrainé sur son train, ses hyperparametres
 (s'il en a) sont choisis sur sa validation, puis on predit sur son test -- une
 seule fois, jamais reutilise pour choisir quoi que ce soit. Les predictions de
@@ -32,6 +54,44 @@ portefeuilles par decile du notebook 07, pas une fenetre individuelle.
 
 import numpy as np
 import pandas as pd
+
+
+# ============================================================
+# Embargo aux frontieres des blocs (horizon de prediction long)
+# ============================================================
+MOIS_EMBARGO_PAR_DEFAUT = 0
+# ⚠️ 0 = comportement d'origine du projet, INCHANGE. Tant que cette valeur vaut 0,
+# `preparer_fenetre` se comporte exactement comme avant, et les scripts etape04 a etape07
+# ne voient aucune difference.
+#
+# A quoi ca sert : avec une cible qui porte sur H mois (horizon long, scripts etape11 a
+# etape14), la cible des derniers mois du TRAIN porte sur des rendements qui appartiennent
+# a la VALIDATION -- et de meme entre validation et test. C'est une fuite de donnees pure et
+# simple : le modele s'entraine sur de l'information provenant du bloc suivant.
+#
+# Le remede est l'embargo (purge, Lopez de Prado) : on retire les H derniers mois de chaque
+# bloc. Le compte exact est H, pas H-1 : pour qu'une observation en t ait sa fenetre
+# t+1..t+H entierement contenue dans son bloc, il faut t + H <= fin du bloc, donc
+# t <= fin - H ; les mois ecartes vont de fin-H+1 a fin, soit H mois.
+#
+# Cette valeur est positionnee par horizon.activer_mode_horizon(), appelee uniquement par
+# les scripts etape11 a etape14. Elle n'est jamais modifiee ailleurs.
+
+
+def appliquer_embargo(mois_bloc, mois_embargo):
+    """Retire les `mois_embargo` DERNIERS mois d'un bloc (train ou validation).
+
+    ⚠️ On ne touche jamais au TEST : ses observations ne servent a entrainer ni a
+    selectionner quoi que ce soit, donc leur horizon peut deborder sur la fenetre suivante
+    sans creer la moindre fuite. Les dates de test dont la cible n'est pas calculable sont
+    de toute facon deja absentes du panel (voir horizon.construire_cible_horizon).
+    """
+    if mois_embargo <= 0:
+        return list(mois_bloc)
+    mois_tries = sorted(mois_bloc)
+    if mois_embargo >= len(mois_tries):
+        return []
+    return mois_tries[:-mois_embargo]
 
 
 def r2_oos(y_true, y_pred):
@@ -47,8 +107,32 @@ def r2_oos(y_true, y_pred):
     return 1 - np.sum((y_true - y_pred) ** 2) / np.sum(y_true ** 2)
 
 
+def annees_validation_fenetre(numero, annees_validation,
+                              reduction_validation_par_fenetre=0,
+                              fenetre_debut_reduction_validation=1,
+                              annees_validation_minimum=1):
+    """Nombre d'annees de validation de la fenetre `numero` (0, 1, 2, ...).
+
+    Sans reduction (reduction_validation_par_fenetre=0, valeur par defaut), renvoie
+    toujours `annees_validation` : comportement d'origine du projet.
+
+    Avec reduction : la fenetre `fenetre_debut_reduction_validation` est la PREMIERE a
+    etre raccourcie (d'un pas), la suivante de deux pas, etc., jusqu'au plancher
+    `annees_validation_minimum`. Exemple (validation=10, reduction=1, debut=1) :
+    fenetre 0 -> 10 ans, fenetre 1 -> 9 ans, fenetre 2 -> 8 ans...
+    """
+    if reduction_validation_par_fenetre <= 0 or numero < fenetre_debut_reduction_validation:
+        return annees_validation
+    nb_pas = numero - fenetre_debut_reduction_validation + 1
+    return max(annees_validation_minimum,
+               annees_validation - reduction_validation_par_fenetre * nb_pas)
+
+
 def generer_fenetres(mois_disponibles, type_fenetre, annees_train_initial,
-                      annees_validation, annees_test_par_fenetre):
+                      annees_validation, annees_test_par_fenetre,
+                      reduction_validation_par_fenetre=0,
+                      fenetre_debut_reduction_validation=1,
+                      annees_validation_minimum=1):
     """Construit la liste des fenetres d'entrainement/validation/test.
 
     Parametres
@@ -58,10 +142,18 @@ def generer_fenetres(mois_disponibles, type_fenetre, annees_train_initial,
     type_fenetre : "expanding" ou "rolling" (voir config.py, TYPE_FENETRE).
     annees_train_initial : nb d'annees d'entrainement de la toute premiere
         fenetre (et taille FIXE du train a chaque fenetre si type_fenetre="rolling").
-    annees_validation : nb d'annees de validation (fenetre glissante, dans les
-        2 modes -- seul le train differe entre "expanding" et "rolling").
+    annees_validation : nb d'annees de validation de la PREMIERE fenetre (fenetre
+        glissante, dans les 2 modes -- seul le train differe entre "expanding" et
+        "rolling"). Constant d'une fenetre a l'autre, sauf si
+        reduction_validation_par_fenetre > 0 ci-dessous.
     annees_test_par_fenetre : nb d'annees de test evaluees avant de ré-entrainer
         (1 = ré-entrainement annuel, comme Gu, Kelly & Xiu 2020).
+    reduction_validation_par_fenetre : nb d'annees dont la validation RETRECIT a chaque
+        nouvelle fenetre (0 = jamais, comportement d'origine). Voir la docstring du
+        module pour le schema complet et l'effet sur le train.
+    fenetre_debut_reduction_validation : numero de la PREMIERE fenetre raccourcie
+        (1 = des la deuxieme fenetre ; sans effet si la reduction vaut 0).
+    annees_validation_minimum : plancher, la validation ne descend jamais en dessous.
 
     Retourne
     --------
@@ -72,11 +164,32 @@ def generer_fenetres(mois_disponibles, type_fenetre, annees_train_initial,
         'test'       : liste des annee_mois de test de cette fenetre
         'annee_test' : annee(s) couverte(s) par le test, pour l'affichage
                        (ex: "2010" ou "2010-2011" si annees_test_par_fenetre > 1)
+        'annees_validation' : nb d'annees de validation DE CETTE FENETRE (utile quand
+                       la reduction est active : c'est ce qui change d'une fenetre a
+                       l'autre, voir resumer_fenetres)
+
+    Le calage se fait sur le TEST : la fenetre k teste les annees
+    [premiere_annee + annees_train_initial + annees_validation + k * annees_test_par_fenetre, ...],
+    la validation occupe les annees juste avant, et le train tout ce qui reste devant
+    elle (depuis premiere_annee en "expanding", sur annees_train_initial annees en
+    "rolling"). Les tests des fenetres successives se suivent donc exactement, sans trou
+    ni chevauchement, que la validation retrecisse ou non.
 
     On s'arrete des que la fenetre de test suivante depasserait le dernier mois
     disponible -- la toute derniere fenetre peut donc couvrir moins d'annees de
     test que les autres si le nombre total d'annees ne tombe pas juste.
     """
+    if type_fenetre not in ("expanding", "rolling"):
+        raise ValueError(
+            f"type_fenetre inconnu : {type_fenetre!r} (attendu 'expanding' ou 'rolling')"
+        )
+    if annees_validation_minimum < 1:
+        raise ValueError(
+            f"annees_validation_minimum={annees_validation_minimum} : il faut au moins 1 annee "
+            "de validation (les hyperparametres de 05 et 06 s'y choisissent). Corrige "
+            "ANNEES_VALIDATION_MINIMUM dans config.py."
+        )
+
     mois_tries = sorted(set(mois_disponibles))
     if not mois_tries:
         raise ValueError("mois_disponibles est vide : impossible de construire des fenetres.")
@@ -97,19 +210,28 @@ def generer_fenetres(mois_disponibles, type_fenetre, annees_train_initial,
 
     liste_fenetres = []
     numero = 0
-    debut_train = premiere_annee
-    fin_train = premiere_annee + annees_train_initial - 1  # inclus
+    # Premiere annee de test de la fenetre 0 : juste apres le train initial et la
+    # validation initiale. Elle avance ensuite de annees_test_par_fenetre par fenetre,
+    # quoi qu'il arrive a la validation (voir docstring).
+    debut_test = premiere_annee + annees_train_initial + annees_validation
 
-    while True:
-        debut_validation = fin_train + 1
-        fin_validation = debut_validation + annees_validation - 1
-        debut_test = fin_validation + 1
-        fin_test = debut_test + annees_test_par_fenetre - 1
+    while debut_test <= derniere_annee:
+        fin_test = min(debut_test + annees_test_par_fenetre - 1, derniere_annee)
 
-        if debut_test > derniere_annee:
-            break  # plus aucune annee de test disponible : on s'arrete
+        # La validation s'arrete toujours juste avant le test ; seule sa LONGUEUR change.
+        n_annees_validation = annees_validation_fenetre(
+            numero, annees_validation, reduction_validation_par_fenetre,
+            fenetre_debut_reduction_validation, annees_validation_minimum)
+        fin_validation = debut_test - 1
+        debut_validation = fin_validation - n_annees_validation + 1
 
-        fin_test = min(fin_test, derniere_annee)  # la toute derniere fenetre peut etre plus courte
+        # Le train occupe ce qui reste devant la validation.
+        fin_train = debut_validation - 1
+        if type_fenetre == "expanding":
+            debut_train = premiere_annee                      # le debut ne bouge pas : le train grandit
+        else:  # "rolling"
+            debut_train = fin_train - annees_train_initial + 1  # taille fixe : le train glisse
+        debut_train = max(debut_train, premiere_annee)
 
         mois_train = mois_des_annees(range(debut_train, fin_train + 1))
         mois_validation = mois_des_annees(range(debut_validation, fin_validation + 1))
@@ -122,22 +244,14 @@ def generer_fenetres(mois_disponibles, type_fenetre, annees_train_initial,
                 'validation': mois_validation,
                 'test': mois_test,
                 'annee_test': f"{debut_test}" if debut_test == fin_test else f"{debut_test}-{fin_test}",
+                'annees_validation': n_annees_validation,
             })
-            numero += 1
 
         if fin_test >= derniere_annee:
             break
 
-        # On avance tout de annees_test_par_fenetre, mais le TRAIN differe selon le mode :
-        if type_fenetre == "expanding":
-            fin_train += annees_test_par_fenetre        # le debut ne bouge pas : le train grandit
-        elif type_fenetre == "rolling":
-            debut_train += annees_test_par_fenetre       # le debut avance aussi : le train glisse (taille fixe)
-            fin_train += annees_test_par_fenetre
-        else:
-            raise ValueError(
-                f"type_fenetre inconnu : {type_fenetre!r} (attendu 'expanding' ou 'rolling')"
-            )
+        numero += 1
+        debut_test += annees_test_par_fenetre
 
     if not liste_fenetres:
         raise ValueError(
@@ -150,7 +264,8 @@ def generer_fenetres(mois_disponibles, type_fenetre, annees_train_initial,
     return liste_fenetres
 
 
-def preparer_fenetre(panel, fenetre, predicteurs, macro_predicteurs, cible):
+def preparer_fenetre(panel, fenetre, predicteurs, macro_predicteurs, cible,
+                     mois_embargo=None):
     """Isole les lignes de train/validation/test d'une fenetre, et standardise
     les predicteurs macro sur cette fenetre.
 
@@ -166,13 +281,34 @@ def preparer_fenetre(panel, fenetre, predicteurs, macro_predicteurs, cible):
     mois, sans aucune fuite -- il reste valable tel quel, quelle que soit la
     fenetre.
 
+    `mois_embargo` : nombre de mois retires a la FIN du train et de la validation (None =
+    MOIS_EMBARGO_PAR_DEFAUT, soit 0 et donc aucun effet dans le pipeline d'origine). Voir
+    l'en-tete du module : ce reglage n'existe que pour l'horizon de prediction long.
+
     Retourne un dict avec X_train/y_train, X_validation/y_validation,
     X_test/y_test, et id_test (permno + annee_mois du test, necessaire au
     notebook 07 pour reconstruire des portefeuilles par decile mois par mois).
     """
-    train = panel[panel['annee_mois'].isin(fenetre['train'])].copy()
-    validation = panel[panel['annee_mois'].isin(fenetre['validation'])].copy()
-    test = panel[panel['annee_mois'].isin(fenetre['test'])].copy()
+    mois_embargo = MOIS_EMBARGO_PAR_DEFAUT if mois_embargo is None else mois_embargo
+
+    # ⚠️ Embargo : avec une cible longue, les derniers mois du train et de la validation
+    # ont un horizon qui deborde sur le bloc SUIVANT -- il faut les retirer, sinon le
+    # modele s'entraine (et selectionne ses hyperparametres) sur de l'information du futur.
+    # A mois_embargo = 0 (defaut, horizon 1 mois), ces trois lignes sont sans effet.
+    mois_train = appliquer_embargo(fenetre['train'], mois_embargo)
+    mois_validation = appliquer_embargo(fenetre['validation'], mois_embargo)
+    mois_test = fenetre['test']
+
+    if not mois_train or not mois_validation:
+        raise ValueError(
+            f"Fenetre {fenetre.get('numero')} : l'embargo de {mois_embargo} mois vide le "
+            "train ou la validation. Augmente ANNEES_TRAIN_INITIAL / ANNEES_VALIDATION "
+            "dans config.py, ou reduis HORIZON_PREDICTION_MOIS."
+        )
+
+    train = panel[panel['annee_mois'].isin(mois_train)].copy()
+    validation = panel[panel['annee_mois'].isin(mois_validation)].copy()
+    test = panel[panel['annee_mois'].isin(mois_test)].copy()
 
     moyennes_train = train[macro_predicteurs].mean()
     ecarts_types_train = train[macro_predicteurs].std()
@@ -199,7 +335,9 @@ def resumer_fenetres(liste_fenetres):
         lignes.append({
             'fenetre': f['numero'],
             'train_debut': f['train'][0], 'train_fin': f['train'][-1], 'n_mois_train': len(f['train']),
+            'n_annees_train': int(f['train'][-1][:4]) - int(f['train'][0][:4]) + 1,
             'validation_debut': f['validation'][0], 'validation_fin': f['validation'][-1],
+            'n_annees_validation': f.get('annees_validation'),
             'test_debut': f['test'][0], 'test_fin': f['test'][-1],
             'annee_test': f['annee_test'],
         })

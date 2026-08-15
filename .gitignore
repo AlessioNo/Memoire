@@ -2,20 +2,25 @@
 data/raw/*
 data/interim/*
 data/processed/*
-# keep the folder structure itself so `config.assurer_dossiers()` / a fresh clone has somewhere to land files
+# keep the folder structure itself so `chemins.assurer_dossiers()` / a fresh clone has somewhere to land files
 !data/raw/.gitkeep
 !data/interim/.gitkeep
 !data/processed/.gitkeep
 
 # --- Generated outputs / trained models ---
+# outputs/ contient aussi outputs/rapports/ (le pont scripts -> notebooks, voir rapports.py) :
+# regenere a chaque execution, jamais commite.
 outputs/*
 modeles/*
 !outputs/.gitkeep
 !modeles/.gitkeep
 
+# ⚠️ `modeles/` ci-dessus est le dossier des modeles ENTRAINES (.joblib / .pkl), pas du code.
+# Le code d'entrainement vit dans `entrainement/` (boucle.py, specs.py, analyses.py) et dans
+# `scripts/entrainer/` : ces deux-la SONT versionnes, ne les ajoute jamais ici.
+
 # --- Jupyter ---
 .ipynb_checkpoints/
-*/.ipynb_checkpoints/*
 
 # --- Python ---
 __pycache__/

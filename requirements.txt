@@ -9,6 +9,7 @@ statsmodels>=0.14
 matplotlib>=3.8
 shap>=0.45
 joblib>=1.4
+pyarrow>=15.0          # moteur Parquet (lecture/ecriture de tous les outputs/)
 
 # jupyter (to open/run the display notebooks; scripts/ run with plain python)
 jupyter>=1.0

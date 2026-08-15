@@ -74,18 +74,25 @@ import numpy as np
 import pandas as pd
 
 import config
-import utils
+import fenetres
+import rapports
 
 
 # ============================================================
 # Parametres GENERAUX : lus directement dans config.py
 # ============================================================
 
+CIBLE_ORIGINE = 'excess_return'
+# Cible du pipeline principal (horizon 1 mois). Sert de reference : tant que config.CIBLE
+# vaut cette valeur, la signature d'une experience est EXACTEMENT celle d'avant l'ajout de
+# l'horizon long.
+
+
 def params_generaux_actuels():
     """Snapshot des parametres GENERAUX actuellement definis dans config.py -- ceux qui,
     s'ils changent, changent le resultat des 3 modeles (04, 05, 06) de la meme facon.
     Voir config.py, section "Parametres GENERAUX", pour le detail de chacun."""
-    return {
+    params = {
         'predicteurs': list(config.PREDICTEURS),
         'type_fenetre': config.TYPE_FENETRE,
         'annee_debut_entrainement': config.ANNEE_DEBUT_ENTRAINEMENT,
@@ -95,6 +102,31 @@ def params_generaux_actuels():
         'seuil_percentile_taille': config.SEUIL_PERCENTILE_TAILLE,
         'seuil_percentile_liquidite': config.SEUIL_PERCENTILE_LIQUIDITE,
     }
+
+    # Reduction progressive de la validation (config.py) : ces 3 parametres n'entrent dans
+    # la signature de l'experience que lorsque la reduction est ACTIVE. Sans ce test, la
+    # simple existence de l'option changerait la cle de TOUTES les experiences deja au
+    # journal (lancees avant son ajout) : relancer un modele a l'identique creerait un
+    # doublon, et ses mesures de portefeuille (notebook 07) ne se rattacheraient plus a
+    # rien. Reduction = 0 donne donc exactement les memes fenetres, et la meme cle, qu'avant.
+    if config.REDUCTION_VALIDATION_PAR_FENETRE:
+        params['reduction_validation_par_fenetre'] = config.REDUCTION_VALIDATION_PAR_FENETRE
+        params['fenetre_debut_reduction_validation'] = config.FENETRE_DEBUT_REDUCTION_VALIDATION
+        params['annees_validation_minimum'] = config.ANNEES_VALIDATION_MINIMUM
+
+    # Horizon de prediction long (scripts etape11 a etape14) : meme principe que ci-dessus.
+    # Ces 3 cles n'entrent dans la signature que lorsque la cible n'est PLUS celle d'origine,
+    # c'est-a-dire uniquement pendant l'execution d'un script 11 a 14 (qui bascule
+    # config.CIBLE via horizon.activer_mode_horizon). Les experiences a 1 mois deja au
+    # journal gardent donc exactement la cle qu'elles avaient, et les deux pistes cohabitent
+    # sans jamais se confondre : le notebook 09 les distingue tout seul.
+    if config.CIBLE != CIBLE_ORIGINE:
+        params['cible'] = config.CIBLE
+        params['horizon_mois'] = config.HORIZON_PREDICTION_MOIS
+        params['traitement_radiation'] = config.TRAITEMENT_RADIATION
+        params['mois_embargo'] = fenetres.MOIS_EMBARGO_PAR_DEFAUT
+
+    return params
 
 
 # ============================================================
@@ -126,8 +158,8 @@ def _cle_experience(modele, params_generaux, params_specifiques):
     signature = json.dumps(
         {
             'modele': modele,
-            'generaux': utils.nettoyer_pour_json(params_generaux),
-            'specifiques': utils.nettoyer_pour_json(params_specifiques),
+            'generaux': rapports.nettoyer_pour_json(params_generaux),
+            'specifiques': rapports.nettoyer_pour_json(params_specifiques),
         },
         sort_keys=True,
         default=str,
@@ -140,7 +172,7 @@ def _label_params_specifiques(params_specifiques):
     tableau/groupe au notebook 08 (ex: 'grille_alpha=[1e-07..1e-01] (10 val.),
     grille_l1_ratio=[0.1..0.9] (5 val.), max_iter=1000'). Les listes de plus de 4
     valeurs sont resumees (min..max + compte) pour rester lisibles en titre."""
-    params_specifiques = utils.nettoyer_pour_json(params_specifiques)
+    params_specifiques = rapports.nettoyer_pour_json(params_specifiques)
     if not params_specifiques:
         return "(aucun hyperparametre)"
     morceaux = []
@@ -199,13 +231,13 @@ def enregistrer_experience(modele, params_specifiques, resultats, duree_entraine
               "(meme modele, memes parametres generaux et specifiques qu'un lancement precedent).")
         return False
 
-    params_generaux_json = utils.nettoyer_pour_json(params_generaux)
+    params_generaux_json = rapports.nettoyer_pour_json(params_generaux)
     ligne = {
         'cle_experience': cle,
         'horodatage': pd.Timestamp.now().isoformat(timespec='seconds'),
         'modele': modele,
         'duree_entrainement_secondes': float(duree_entrainement_secondes),
-        'params_specifiques_json': json.dumps(utils.nettoyer_pour_json(params_specifiques), sort_keys=True),
+        'params_specifiques_json': json.dumps(rapports.nettoyer_pour_json(params_specifiques), sort_keys=True),
         'params_specifiques_label': _label_params_specifiques(params_specifiques),
         'gen_n_predicteurs': len(params_generaux_json['predicteurs']),
         'gen_predicteurs_json': json.dumps(params_generaux_json['predicteurs']),
@@ -214,6 +246,12 @@ def enregistrer_experience(modele, params_specifiques, resultats, duree_entraine
         'gen_annees_train_initial': params_generaux_json['annees_train_initial'],
         'gen_annees_validation': params_generaux_json['annees_validation'],
         'gen_annees_test_par_fenetre': params_generaux_json['annees_test_par_fenetre'],
+        # NaN (et non 0) quand la reduction est inactive : ces deux parametres n'ont alors
+        # aucun effet, et deux lancements qui ne different que par eux sont bien la MEME
+        # experience (meme cle) -- afficher une valeur ferait croire le contraire.
+        'gen_reduction_validation_par_fenetre': params_generaux_json.get('reduction_validation_par_fenetre', 0),
+        'gen_fenetre_debut_reduction_validation': params_generaux_json.get('fenetre_debut_reduction_validation', np.nan),
+        'gen_annees_validation_minimum': params_generaux_json.get('annees_validation_minimum', np.nan),
         'gen_seuil_percentile_taille': params_generaux_json['seuil_percentile_taille'],
         'gen_seuil_percentile_liquidite': params_generaux_json['seuil_percentile_liquidite'],
         'res_n_fenetres': int(resultats['n_fenetres']),
@@ -237,6 +275,8 @@ _COLONNES_JOURNAL = [
     'params_specifiques_json', 'params_specifiques_label',
     'gen_n_predicteurs', 'gen_predicteurs_json', 'gen_type_fenetre',
     'gen_annee_debut_entrainement', 'gen_annees_train_initial', 'gen_annees_validation', 'gen_annees_test_par_fenetre',
+    'gen_reduction_validation_par_fenetre', 'gen_fenetre_debut_reduction_validation',
+    'gen_annees_validation_minimum',
     'gen_seuil_percentile_taille', 'gen_seuil_percentile_liquidite',
     'res_n_fenetres', 'res_r2_oos_train', 'res_r2_oos_validation', 'res_r2_oos_test',
 ]
@@ -247,7 +287,14 @@ def charger_journal():
     colonnes) s'il n'existe pas encore -- cas du tout premier lancement du projet, avant
     d'avoir execute 04, 05 ou 06 au moins une fois."""
     if config.FICHIER_JOURNAL_EXPERIENCES.exists():
-        return pd.read_parquet(config.FICHIER_JOURNAL_EXPERIENCES)
+        journal = pd.read_parquet(config.FICHIER_JOURNAL_EXPERIENCES)
+        # Un journal ecrit AVANT l'ajout d'un parametre general (ex: la reduction
+        # progressive de la validation) n'en a pas la colonne : on la cree vide plutot
+        # que de laisser le notebook 08 planter sur une colonne manquante.
+        for colonne in _COLONNES_JOURNAL:
+            if colonne not in journal.columns:
+                journal[colonne] = 0 if colonne == 'gen_reduction_validation_par_fenetre' else np.nan
+        return journal[_COLONNES_JOURNAL]
     return pd.DataFrame(columns=_COLONNES_JOURNAL)
 
 
@@ -356,6 +403,9 @@ _NOMS_AFFICHAGE = {
     'gen_annees_train_initial': 'annees_train_initial',
     'gen_annees_validation': 'annees_validation',
     'gen_annees_test_par_fenetre': 'annees_test_par_fenetre',
+    'gen_reduction_validation_par_fenetre': 'reduction_validation',
+    'gen_fenetre_debut_reduction_validation': 'debut_reduction_validation',
+    'gen_annees_validation_minimum': 'validation_minimum',
     'gen_seuil_percentile_taille': 'seuil_percentile_taille',
     'gen_seuil_percentile_liquidite': 'seuil_percentile_liquidite',
     'res_n_fenetres': 'n_fenetres',
@@ -370,6 +420,8 @@ COLONNES_PARAMS_GENERAUX = [
     'gen_n_predicteurs', 'gen_type_fenetre', 'gen_annee_debut_entrainement',
     'gen_annees_train_initial',
     'gen_annees_validation', 'gen_annees_test_par_fenetre',
+    'gen_reduction_validation_par_fenetre', 'gen_fenetre_debut_reduction_validation',
+    'gen_annees_validation_minimum',
     'gen_seuil_percentile_taille', 'gen_seuil_percentile_liquidite',
 ]
 COLONNES_RESULTATS = ['res_r2_oos_train', 'res_r2_oos_validation', 'res_r2_oos_test', 'res_n_fenetres']
@@ -428,7 +480,7 @@ def tableaux_par_modele(journal, historique_performance_portefeuilles=None):
 
     for (modele, label), sous_df in journal.groupby(['modele', 'params_specifiques_label'], sort=False):
         colonnes_a_garder = (
-            ['date_experience'] + [c for c in COLONNES_PARAMS_GENERAUX] +
+            ['date_experience'] + [c for c in COLONNES_PARAMS_GENERAUX if c in sous_df.columns] +
             ['duree_entrainement_secondes'] + COLONNES_RESULTATS + ['cle_experience']
         )
         tableau = sous_df.rename(columns={'horodatage': 'date_experience'})[colonnes_a_garder].copy()
