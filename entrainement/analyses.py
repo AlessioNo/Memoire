@@ -38,6 +38,10 @@ def fama_macbeth(panel, rap):
     Utilise TOUT l'historique du panel, pas seulement le train d'une fenetre : l'objectif
     est descriptif (quelles caracteristiques comptent en moyenne, de facon stable dans le
     temps), pas une nouvelle evaluation hors-echantillon.
+
+    Sauvegarde en plus la matrice mois x predicteurs des coefficients ET celle de leurs
+    ecarts-types, pour la figure 6ter du notebook 04 (frequence de significativite et
+    coherence de signe, fenetre par fenetre).
     """
     import statsmodels.api as sm
 
@@ -49,19 +53,46 @@ def fama_macbeth(panel, rap):
     predicteurs_fm = [p for p in predicteurs if p in caracteristiques]
 
     coefs_mensuels = []
+    erreurs_mensuelles = []
     mois_utilises = []
     for mois, g in panel.groupby('annee_mois', sort=True, observed=True):
         # Securite : il faut strictement plus d'observations que de parametres a estimer
         if len(g) <= len(predicteurs_fm) + 1:
             continue
         X_design = np.column_stack([np.ones(len(g)), g[predicteurs_fm].values])
-        beta, *_ = np.linalg.lstsq(X_design, g[cible].values, rcond=None)
-        coefs_mensuels.append(beta[1:])  # on jette la constante, on garde les pentes
+        y = g[cible].values
+        beta, *_ = np.linalg.lstsq(X_design, y, rcond=None)
+
+        # Ecarts-types OLS de la coupe transversale de CE mois. Avec n ~ 3000 entreprises
+        # pour ~90 parametres, ils sont bien estimes -- contrairement a un ecart-type
+        # calcule sur les 12 coefficients d'une fenetre.
+        residus = y - X_design @ beta
+        n_obs, n_param = X_design.shape
+        variance = (residus @ residus) / (n_obs - n_param)
+        erreurs = np.sqrt(variance * np.diag(np.linalg.pinv(X_design.T @ X_design)))
+
+        coefs_mensuels.append(beta[1:])      # on jette la constante, on garde les pentes
+        erreurs_mensuelles.append(erreurs[1:])
         mois_utilises.append(mois)
 
     coefs_mensuels = pd.DataFrame(coefs_mensuels, columns=predicteurs_fm, index=mois_utilises)
     print(f"{len(coefs_mensuels)} regressions cross-sectionnelles mensuelles estimees "
           f"({len(predicteurs_fm)} predicteurs, periode {mois_utilises[0]} a {mois_utilises[-1]}).")
+
+    # <-- AJOUT : matrices mois x predicteurs sur disque, pour la section 6ter du notebook 04
+    coefs_mensuels.index = coefs_mensuels.index.astype(str)
+    coefs_mensuels.index.name = 'annee_mois'
+    coefs_mensuels.to_parquet(chemins.sortie('coefficients_fm_mensuels'))
+
+    erreurs_mensuelles = pd.DataFrame(erreurs_mensuelles,
+                                      columns=predicteurs_fm,
+                                      index=coefs_mensuels.index)
+    erreurs_mensuelles.index.name = 'annee_mois'
+    erreurs_mensuelles.to_parquet(chemins.sortie('erreurs_types_fm_mensuels'))
+
+    print("Coefficients mensuels sauvegardes :", chemins.sortie('coefficients_fm_mensuels'))
+    print("Ecarts-types mensuels sauvegardes :", chemins.sortie('erreurs_types_fm_mensuels'))
+    # fin AJOUT -->
 
     # Moyenne temporelle + t-stat de Newey-West
     T_mois = len(coefs_mensuels)
@@ -99,7 +130,6 @@ def fama_macbeth(panel, rap):
     rap.valeur('fm_nb_lags_nw', nb_lags_nw)
     rap.valeur('fm_nb_significatifs', nb_significatifs)
     rap.valeur('fm_n_teste', int(len(significativite)))
-
 
 # ============================================================
 # Elastic Net -- stabilite de la selection de variables

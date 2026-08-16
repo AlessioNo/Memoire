@@ -294,7 +294,7 @@ ANNEE_DEBUT_ENTRAINEMENT = 1980
 
 ANNEES_TRAIN_INITIAL = 18    # nb d'annees d'entrainement de la 1ere fenetre (taille FIXE du train si "rolling")
 ANNEES_VALIDATION = 12       # nb d'annees de validation, glisse toujours juste apres le train
-ANNEES_TEST_PAR_FENETRE = 1  # nb d'annees de test par fenetre avant de ré-entrainer (1 = ré-entrainement annuel, comme GKX)
+ANNEES_TEST_PAR_FENETRE = 4  # nb d'annees de test par fenetre avant de ré-entrainer (1 = ré-entrainement annuel, comme GKX)
 
 # ⚠️ Augmenter ANNEES_TEST_PAR_FENETRE reduit le nombre de fenetres (donc le temps
 # de calcul total, surtout pour le notebook 06 LightGBM) au prix d'un ré-entrainement
