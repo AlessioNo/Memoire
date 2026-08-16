@@ -149,6 +149,14 @@ PERFORMANCE_CONSTRUCTIONS = sortie("performance_constructions")
 
 PREDICTIONS_ENSEMBLE = sortie("predictions_ensemble")
 POIDS_ENSEMBLE = sortie("poids_ensemble_par_mois")
+# Comparaison des METHODES de ponderation (notebook 08 partie C). Fichiers SEPARES de
+# performance_portefeuilles.parquet : seule la methode de reference
+# (config.METHODE_PONDERATION_ENSEMBLE) alimente le journal des experiences.
+POIDS_ENSEMBLE_METHODES = sortie("poids_ensemble_par_methode")
+PERFORMANCE_ENSEMBLES_METHODES = sortie("performance_ensembles_methodes")
+ENSEMBLES_POIDS_PNG = sortie("ensembles_poids_par_methode", "png")
+ENSEMBLES_CUMULATIF_PNG = sortie("ensembles_richesse_cumulee", "png")
+
 
 COMPARAISON_PARQUET = sortie("comparaison_modeles")
 COMPARAISON_PNG = sortie("comparaison_modeles", "png")

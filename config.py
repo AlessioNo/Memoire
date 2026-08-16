@@ -190,7 +190,7 @@ MACRO_PREDICTEURS = [
 #
 
 # ============================================================
-PREDICTEURS = CARACTERISTIQUES_RETENUES
+PREDICTEURS = CARACTERISTIQUES_RETENUES + MACRO_PREDICTEURS
 
 
 # ------------------------------------------------------------
@@ -294,7 +294,7 @@ ANNEE_DEBUT_ENTRAINEMENT = 1980
 
 ANNEES_TRAIN_INITIAL = 18    # nb d'annees d'entrainement de la 1ere fenetre (taille FIXE du train si "rolling")
 ANNEES_VALIDATION = 12       # nb d'annees de validation, glisse toujours juste apres le train
-ANNEES_TEST_PAR_FENETRE = 4  # nb d'annees de test par fenetre avant de ré-entrainer (1 = ré-entrainement annuel, comme GKX)
+ANNEES_TEST_PAR_FENETRE = 1  # nb d'annees de test par fenetre avant de ré-entrainer (1 = ré-entrainement annuel, comme GKX)
 
 # ⚠️ Augmenter ANNEES_TEST_PAR_FENETRE reduit le nombre de fenetres (donc le temps
 # de calcul total, surtout pour le notebook 06 LightGBM) au prix d'un ré-entrainement
@@ -337,7 +337,7 @@ ANNEES_TEST_PAR_FENETRE = 4  # nb d'annees de test par fenetre avant de ré-entr
 # experiences que lorsque la reduction est active (REDUCTION_VALIDATION_PAR_FENETRE > 0),
 # pour que les cles des experiences deja lancees sans reduction restent inchangees.
 # ------------------------------------------------------------
-REDUCTION_VALIDATION_PAR_FENETRE = 0
+REDUCTION_VALIDATION_PAR_FENETRE = 1
 # Nb d'annees retirees a la validation A CHAQUE nouvelle fenetre. 0 = desactive
 # (validation de taille constante, comportement d'origine).
 
@@ -354,7 +354,7 @@ FENETRE_DEBUT_REDUCTION_VALIDATION = 1
 # Le tableau `resume_fenetres` (rapports 04/05/06, affiche aux notebooks) donne de toute
 # facon la correspondance numero de fenetre <-> annee de test.
 
-ANNEES_VALIDATION_MINIMUM = 1
+ANNEES_VALIDATION_MINIMUM = 4
 # Plancher : la validation ne descend jamais sous ce nombre d'annees, meme si la
 # reduction continue. Doit valoir au moins 1.
 
@@ -605,6 +605,12 @@ METHODE_PONDERATION_ENSEMBLE = 'moindres_carres'
 # ⚠️ Les deux dernieres methodes sont "glissantes" : les tout premiers mois de test n'ont
 # pas assez d'historique pour estimer quoi que ce soit et retombent sur des poids egaux
 # (voir MOIS_MINIMUM_PONDERATION_ENSEMBLE).
+
+METHODES_ENSEMBLE_COMPAREES = ('egale', 'r2_validation',
+                               'inverse_variance', 'moindres_carres')
+# Les regles de ponderation rejouees cote a cote en partie C du notebook 08, a composition
+# de modeles FIXE. Analyse de sensibilite : aucune n'est "choisie", et seule
+# METHODE_PONDERATION_ENSEMBLE ci-dessus alimente le journal des experiences.
 
 POIDS_ENSEMBLE = {'LightGBM': 0.6, 'Random Forest': 0.4}
 # Utilise UNIQUEMENT si METHODE_PONDERATION_ENSEMBLE = 'manuelle'. Une entree par modele de
@@ -989,6 +995,10 @@ FICHIER_HISTORIQUE_PERFORMANCE_PORTEFEUILLES = chemins.HISTORIQUE_PERFORMANCE_PO
 FICHIER_PERFORMANCE_CONSTRUCTIONS = chemins.PERFORMANCE_CONSTRUCTIONS
 FICHIER_PREDICTIONS_ENSEMBLE = chemins.PREDICTIONS_ENSEMBLE
 FICHIER_POIDS_ENSEMBLE = chemins.POIDS_ENSEMBLE
+FICHIER_POIDS_ENSEMBLE_METHODES = chemins.POIDS_ENSEMBLE_METHODES
+FICHIER_PERFORMANCE_ENSEMBLES_METHODES = chemins.PERFORMANCE_ENSEMBLES_METHODES
+FICHIER_ENSEMBLES_POIDS_PNG = chemins.ENSEMBLES_POIDS_PNG
+FICHIER_ENSEMBLES_CUMULATIF_PNG = chemins.ENSEMBLES_CUMULATIF_PNG
 
 FICHIER_COMPARAISON_PARQUET = chemins.COMPARAISON_PARQUET
 FICHIER_COMPARAISON_PNG = chemins.COMPARAISON_PNG

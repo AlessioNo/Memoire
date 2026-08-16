@@ -30,6 +30,9 @@ seule combinaison, vide. Elle n'a donc plus besoin de son propre code d'entraine
 import warnings
 from itertools import product
 
+import config
+import chemins
+
 import numpy as np
 import pandas as pd
 from sklearn.ensemble import RandomForestRegressor
@@ -187,6 +190,12 @@ class RegressionLineaire(Modele):
     def ligne_journal(self, ligne, modele, d):
         return f"n_train={len(d['y_train']):>8,} | "
 
+    def apres_fenetre(self, etat, modele, d, predicteurs):
+        # AJOUT : on garde les coefficients de CHAQUE fenetre (et pas seulement de la
+        # derniere), pour la figure 5bis du notebook 04. Inclut les predicteurs macro.
+        etat.setdefault('coefficients_par_fenetre', []).append(
+            dict(zip(predicteurs, modele.coef_)))
+
     def apres_boucle(self, sortie, grille_complete, rap, predicteurs):
         coefficients = pd.Series(sortie['modele_final'].coef_, index=predicteurs)
         coefficients = coefficients.sort_values(key=abs, ascending=False)
@@ -194,6 +203,13 @@ class RegressionLineaire(Modele):
         rap.valeur('n_coefficients_a_zero', int((coefficients == 0).sum()))
 
     def analyses(self, panel, sortie, rap, options):
+        # AJOUT : matrice fenetre x predicteur des coefficients, sur disque
+        coefficients_fenetres = pd.DataFrame(sortie['coefficients_par_fenetre'])
+        coefficients_fenetres.index.name = 'numero_fenetre'
+        coefficients_fenetres.to_parquet(chemins.sortie('coefficients_par_fenetre_lineaire'))
+        print("Coefficients par fenetre sauvegardes :",
+              chemins.sortie('coefficients_par_fenetre_lineaire'))
+
         if options.get('sans_fama_macbeth'):
             print("\n(--sans-fama-macbeth : section 6bis sautee)")
             rap.valeur('fama_macbeth_execute', False)

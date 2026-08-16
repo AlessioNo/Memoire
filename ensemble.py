@@ -72,7 +72,8 @@ Utilisation (notebook 08, partie C)
 
 import numpy as np
 import pandas as pd
-
+import fenetres
+import portefeuilles
 import config
 
 METHODES = ('manuelle', 'egale', 'r2_validation', 'inverse_variance', 'moindres_carres')
@@ -438,3 +439,82 @@ def description(methode=None):
                             "ré-estimes chaque mois sur les mois de test deja passes"),
     }
     return textes[methode]
+
+
+# ============================================================
+# Comparaison des methodes de ponderation (notebook 08, partie C)
+# ============================================================
+
+METHODES_COMPAREES_DEFAUT = ('egale', 'r2_validation',
+                             'inverse_variance', 'moindres_carres')
+# 'manuelle' est volontairement exclue : elle demande config.POIDS_ENSEMBLE et n'est pas une
+# regle mais un choix arbitraire -- elle n'a pas sa place dans une analyse de sensibilite.
+
+
+def comparer_methodes(predictions, colonnes_par_modele, cible, nb_deciles=10,
+                      methodes=None, scores_validation=None, poids_manuels=None,
+                      fenetre_mois=None, mois_minimum=24, positifs=True):
+    """Rejoue LA MEME combinaison de modeles sous plusieurs regles de ponderation.
+
+    Composition fixe (colonnes_par_modele), memes predictions, memes mois : tout ecart
+    entre deux methodes vient donc UNIQUEMENT de la regle de ponderation. C'est le meme
+    protocole que la section B.9 pour les constructions de portefeuille.
+
+    Retourne un dict :
+      'methodes', 'modeles'        : listes, dans l'ordre d'affichage
+      'poids'                      : {methode: DataFrame mois x modeles}
+      'poids_moyens'               : DataFrame modeles x methodes (poids moyen sur la periode)
+      'diagnostics'                : DataFrame methodes x diagnostics de calculer_poids
+      'predictions_combinees'      : DataFrame aligne sur predictions.index, 1 colonne/methode
+      'rendements'                 : DataFrame mois x methodes (long-short mensuel)
+      'performance'                : DataFrame methodes x mesures (calculer_metriques)
+      'r2_oos'                     : Series methode -> R2_oos test
+      'r2_oos_composants'          : Series modele  -> R2_oos test, memes lignes
+    """
+    methodes = list(methodes) if methodes is not None else list(METHODES_COMPAREES_DEFAUT)
+    modeles = list(colonnes_par_modele)
+
+    # Copie de travail minimale : assigner_deciles_par_mois a besoin de 'annee_mois'.
+    travail = predictions[['annee_mois', cible]].copy()
+
+    poids, diagnostics, rendements, performance, r2 = {}, {}, {}, {}, {}
+    predictions_combinees = pd.DataFrame(index=predictions.index)
+
+    for methode in methodes:
+        tableau_poids, diag = calculer_poids(
+            predictions, colonnes_par_modele, cible, methode,
+            poids_manuels=poids_manuels, scores_validation=scores_validation,
+            fenetre_mois=fenetre_mois, mois_minimum=mois_minimum, positifs=positifs)
+
+        combinee = appliquer(predictions, colonnes_par_modele, tableau_poids)
+
+        # MEME construction que la partie B : deciles recalcules mois par mois, D10 - D1,
+        # equipondere. Sans quoi les Sharpe ne seraient pas comparables aux autres tableaux.
+        travail['pred_combinee'] = combinee.to_numpy()
+        travail['decile_combinee'] = portefeuilles.assigner_deciles_par_mois(
+            travail, 'pred_combinee', n=nb_deciles)
+        tableau_deciles = portefeuilles.rendements_par_decile(
+            travail, 'decile_combinee', cible)
+
+        poids[methode] = tableau_poids
+        diagnostics[methode] = diag
+        predictions_combinees[methode] = combinee
+        rendements[methode] = portefeuilles.rendement_long_short(
+            tableau_deciles, nb_deciles=nb_deciles)
+        performance[methode] = portefeuilles.calculer_metriques(rendements[methode])
+        r2[methode] = fenetres.r2_oos(predictions[cible], combinee)
+
+    return {
+        'methodes': methodes,
+        'modeles': modeles,
+        'poids': poids,
+        'poids_moyens': pd.DataFrame({m: poids[m].mean() for m in methodes}),
+        'diagnostics': pd.DataFrame(diagnostics).T,
+        'predictions_combinees': predictions_combinees,
+        'rendements': pd.DataFrame(rendements),
+        'performance': pd.DataFrame(performance).T,
+        'r2_oos': pd.Series(r2),
+        'r2_oos_composants': pd.Series(
+            {m: fenetres.r2_oos(predictions[cible], predictions[colonnes_par_modele[m]])
+             for m in modeles}),
+    }
