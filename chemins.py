@@ -176,3 +176,6 @@ TAILLE_R2_PNG = sortie("analyse_taille_r2_et_ic", "png")
 TAILLE_DECILES_PNG = sortie("analyse_taille_rendement_par_decile", "png")
 TAILLE_CUMULATIF_PNG = sortie("analyse_taille_richesse_cumulee", "png")
 TAILLE_SEUILS_PNG = sortie("analyse_taille_evolution_capitalisations", "png")
+
+BENCHMARKS = sortie("benchmarks_portefeuilles")
+BENCHMARKS_PNG = sortie("portefeuilles_vs_benchmarks", "png")

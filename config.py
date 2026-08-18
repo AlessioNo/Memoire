@@ -1017,7 +1017,8 @@ FICHIER_TAILLE_R2_PNG = chemins.TAILLE_R2_PNG
 FICHIER_TAILLE_DECILES_PNG = chemins.TAILLE_DECILES_PNG
 FICHIER_TAILLE_CUMULATIF_PNG = chemins.TAILLE_CUMULATIF_PNG
 FICHIER_TAILLE_SEUILS_PNG = chemins.TAILLE_SEUILS_PNG
-
+FICHIER_BENCHMARKS = chemins.BENCHMARKS
+FICHIER_BENCHMARKS_PNG = chemins.BENCHMARKS_PNG
 
 def fichiers_horizon(cle_modele, horizon=None):
     """Chemins de sortie d'un modele pour l'horizon long. Conserve pour le notebook 11.

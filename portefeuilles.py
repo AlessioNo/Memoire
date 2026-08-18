@@ -616,3 +616,5 @@ def comparer_constructions(donnees, colonne_prediction, colonne_cible, nb_decile
     }).T
 
     return {'rendements': rendements, 'performance': performance}
+
+

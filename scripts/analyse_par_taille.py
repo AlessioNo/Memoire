@@ -504,6 +504,69 @@ def evaluer_par_groupe(predictions, noms_groupes, rap):
 
     return performance
 
+NOM_BENCHMARK_EQUIPONDERE = "Univers equipondere"
+NOM_BENCHMARK_CAPI = "Univers pondere capi"
+
+
+def evaluer_benchmarks_par_groupe(predictions, noms_groupes, rap):
+    """Deux repères LONG ONLY calcules A L'INTERIEUR de chaque groupe de taille.
+
+    Ils n'utilisent AUCUNE prediction : c'est le rendement du groupe lui-meme, une fois
+    equipondere, une fois pondere par la capitalisation. Ils repondent a la question
+    "qu'aurait rapporte le fait de detenir simplement toutes les small caps ?", et donnent
+    donc l'echelle a laquelle lire les long-short des modeles dans ce groupe.
+
+    ⚠️ Ce sont des portefeuilles LONG ONLY : ils portent l'exposition au marche que le
+    long-short neutralise. Ils ne se comparent pas terme a terme aux portefeuilles des
+    modeles -- voir les avertissements du notebook 10.
+    """
+    cible = config.CIBLE
+    colonne_groupe = config.COLONNE_GROUPE_TAILLE
+    colonne_mvel1 = config.COLONNE_MVEL1_BRUT
+
+    # ⚠️ `predictions` est au format LONG : un meme titre-mois y figure une fois PAR MODELE.
+    # Les benchmarks ne dependent d'aucun modele -> on deduplique, sinon chaque titre
+    # pesera autant de fois qu'il y a de modeles (et le poids capi serait multiplie).
+    univers = predictions.drop_duplicates(subset=['permno', 'annee_mois']).copy()
+
+    groupes_a_evaluer = ([(config.NOM_GROUPE_UNIVERS_COMPLET, None)]
+                         + [(n, n) for n in noms_groupes])
+
+    lignes_performance, lignes_rendements = [], []
+
+    for nom_groupe, filtre in groupes_a_evaluer:
+        donnees = univers if filtre is None else univers[univers[colonne_groupe] == filtre]
+        if len(donnees) == 0:
+            continue
+
+        equipondere = donnees.groupby('annee_mois')[cible].mean().sort_index()
+
+        poids = donnees[colonne_mvel1]
+        mois = donnees['annee_mois']
+        capi = ((donnees[cible] * poids).groupby(mois).sum()
+                / poids.groupby(mois).sum()).sort_index()
+
+        for nom_benchmark, serie in [(NOM_BENCHMARK_EQUIPONDERE, equipondere),
+                                     (NOM_BENCHMARK_CAPI, capi)]:
+            ligne = {'benchmark': nom_benchmark, 'groupe': nom_groupe}
+            ligne.update(portefeuilles.calculer_metriques(serie))
+            lignes_performance.append(ligne)
+            lignes_rendements.append(pd.DataFrame({
+                'annee_mois': serie.index.astype(str),
+                'benchmark': nom_benchmark,
+                'groupe': nom_groupe,
+                'rendement': serie.values,
+            }))
+
+    benchmarks = pd.DataFrame(lignes_performance)
+    rendements_benchmarks = pd.concat(lignes_rendements, ignore_index=True)
+
+    rap.table('benchmarks_performance', benchmarks)
+    rap.table('rendements_benchmarks', rendements_benchmarks)
+
+    print(f"\nBenchmarks calcules : {len(benchmarks)} lignes "
+          f"({len(groupes_a_evaluer)} groupes x 2 constructions, long only).")
+    return benchmarks
 
 # ============================================================
 def main():
@@ -554,6 +617,8 @@ def main():
     predictions = charger_predictions_et_taille(rap, definition)
     decrire_groupes(predictions, noms_groupes, rap)
     evaluer_par_groupe(predictions, noms_groupes, rap)
+    evaluer_benchmarks_par_groupe(predictions, noms_groupes, rap)
+
 
     rap.sauvegarder()
 
@@ -561,6 +626,7 @@ def main():
     print("ETAPE 10 TERMINEE.")
     print("  -> ouvre notebooks/10_analyse_par_taille.ipynb pour visualiser les resultats")
     print("=" * 70)
+
 
 
 if __name__ == "__main__":
