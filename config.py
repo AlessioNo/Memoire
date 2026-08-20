@@ -190,7 +190,7 @@ MACRO_PREDICTEURS = [
 #
 
 # ============================================================
-PREDICTEURS = CARACTERISTIQUES_RETENUES + MACRO_PREDICTEURS
+PREDICTEURS = CARACTERISTIQUES_RETENUES
 
 
 # ------------------------------------------------------------
@@ -369,7 +369,7 @@ ANNEES_VALIDATION_MINIMUM = 4
 # au notebook 08 de regrouper les runs en un seul tableau par grille testee.
 # ============================================================
 GRILLE_ALPHA_ELASTIC_NET = np.logspace(-5, -1, 5)        # force de regularisation : 1e-7 a 1e-1 (10 valeurs, echelle log)
-GRILLE_L1_RATIO_ELASTIC_NET = [0.1, 0.3, 0.5, 0.7, 0.9]    # equilibre Lasso (1.0) / Ridge (0.0) : 5 valeurs
+GRILLE_L1_RATIO_ELASTIC_NET = [0.1,0.3, 0.5, 0.7, 0.9]    # equilibre Lasso (1.0) / Ridge (0.0) : 5 valeurs
 MAX_ITER_ELASTIC_NET = 1000                                # nb max d'iterations de l'optimiseur, par modele candidat de la grille
 
 
